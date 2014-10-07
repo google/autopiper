@@ -1,0 +1,20 @@
+# Straight-line code testing timing assignment. One long chain to force pipe
+# length and another short chain to test sinking.
+entry txn1:
+#%1[txn] = spawn txn2
+
+%100[32] = const 0
+%101[32] = const 0
+%200[32] = add %100, %101
+%102[32] = add %100, %101
+%103[32] = add %101, %102
+%104[32] = add %102, %103
+%105[32] = add %103, %104
+%106[32] = add %104, %105
+%107[32] = add %105, %106
+%108[32] = add %106, %107
+%109[32] = add %107, %108
+%110[32] = add %108, %109
+%111[32] = add %109, %110
+%300[32] = add %111, %200
+%1000 = kill

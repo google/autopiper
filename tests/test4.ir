@@ -1,0 +1,53 @@
+entry bb1:
+%1[32] = const 0
+%2[32] = add %1, %1
+%3 = jmp bb2
+
+bb2:
+%5[32] = const 1
+%6[32] = add %5, %5
+%7[32] = const 10
+%8[1] = cmplt %6, %7
+%9 = if %8, bb3, bb4
+
+bb3:
+%800[1] = const 0
+%400 = if %800, bb3a, bb3b
+
+bb3a:
+%100[1] = const 1
+%120 = chanwrite "test_out_1", %5
+%200[1] = const 0
+%101 = jmp bb5
+
+bb3b:
+%201[1] = const 0
+%402 = jmp bb5
+
+bb4:
+%801[1] = const 0
+%401 = if %801, bb4a, bb4b
+
+bb4a:
+%121 = chanwrite "test_out_2", %5
+%202[1] = const 1
+%108 = jmp bb5
+
+bb4b:
+%203[1] = const 1
+%403 = jmp bb5
+
+bb5:
+%10[txn] = spawn bb10
+%205[1] = phi bb3a, %200, bb3b, %201, bb4a, %202, bb4b, %203
+%11[1] = chanread "bb10_done"
+%206 = chanwrite "bb10_out", %205
+%12 = kill
+
+bb10:
+%13 = timing_barrier @[bb10_timing + 0]
+%14 = timing_barrier @[bb10_timing + 1]
+%15[1] = const 1
+%16 = chanwrite "bb10_done", %15
+%17 = timing_barrier @[bb10_timing + 1]
+%18 = kill

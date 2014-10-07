@@ -1,0 +1,160 @@
+/*
+ * Copyright 2014 Google Inc. All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "ir.h"
+#include "compiler.h"
+
+#include <map>
+#include <vector>
+#include <string>
+
+using namespace std;
+using namespace autopiper;
+
+namespace {
+
+typedef map<string, IRBB*> BBMap;
+
+bool GetBBMap(IRProgram* program,
+              BBMap* m,
+              ErrorCollector* collector) {
+    for (auto& bb : program->bbs) {
+        if (m->find(bb->label) != m->end()) {
+            collector->ReportError(bb->location, ErrorCollector::ERROR,
+                    string("Duplicate basic-block label '") + bb->label +
+                    string("': previous was at ") +
+                    (*m)[bb->label]->location.ToString());
+            return false;
+        }
+        m->insert(make_pair(bb->label, bb.get()));
+    }
+    return true;
+}
+
+typedef map<int, IRStmt*> ValnumMap;
+
+bool GetValnumMap(IRProgram* program,
+                  ValnumMap* m,
+                  ErrorCollector* collector) {
+    for (auto& bb : program->bbs) {
+        for (auto& stmt : bb->stmts) {
+            if (m->find(stmt->valnum) != m->end()) {
+                collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                        string("Value number duplicated: original use at ") +
+                        (*m)[stmt->valnum]->location.ToString());
+                return false;
+            }
+            m->insert(make_pair(stmt->valnum, stmt.get()));
+        }
+    }
+    return true;
+}
+
+typedef map<string, vector<IRStmt*>> PortMap;
+
+bool GetPortMap(IRProgram* program,
+                PortMap* m,
+                ErrorCollector* collector) {
+    for (auto& bb : program->bbs) {
+        for (auto& stmt : bb->stmts) {
+            if (!IRReadsPort(stmt->type) &&
+                !IRWritesPort(stmt->type) &&
+                stmt->type != IRStmtPortExport) continue;
+            if (stmt->port_name == "") {
+                collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                        "Empty port name");
+                return false;
+            }
+            (*m)[stmt->port_name].push_back(stmt.get());
+        }
+    }
+    return true;
+}
+
+bool LinkStmts(IRProgram* program,
+               BBMap& targets,
+               ValnumMap& valnums,
+               ErrorCollector* collector) {
+    for (auto& bb : program->bbs) {
+        for (auto& stmt : bb->stmts) {
+            for (auto& targ : stmt->target_names) {
+                if (targets.find(targ) == targets.end()) {
+                    collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                            string("Unknown target label '") + targ + string("'"));
+                    return false;
+                }
+                stmt->targets.push_back(targets[targ]);
+            }
+
+            for (auto valnum : stmt->arg_nums) {
+                if (valnums.find(valnum) == valnums.end()) {
+                    collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                            "Unknown argument value number");
+                    return false;
+                }
+                stmt->args.push_back(valnums[valnum]);
+            }
+        }
+    }
+    return true;
+}
+
+bool CreatePorts(IRProgram* program,
+                 const PortMap& m,
+                 ErrorCollector* collector) {
+    for (auto& pair : m) {
+        auto portname = pair.first;
+        auto stmts = pair.second;
+        unique_ptr<IRPort> port(new IRPort());
+        port->name = portname;
+        for (auto* stmt : stmts) {
+            stmt->port = port.get();
+            if (IRWritesPort(stmt->type)) {
+                assert(!port->def);
+                port->def = stmt;
+                if (stmt->type == IRStmtPortWrite) {
+                    port->type = IRPort::PORT;
+                } else if (stmt->type == IRStmtChanWrite) {
+                    port->type = IRPort::CHAN;
+                } else {
+                    assert(false);
+                }
+            } else if (IRReadsPort(stmt->type)) {
+                port->uses.push_back(stmt);
+            } else if (stmt->type == IRStmtPortExport) {
+                port->exported = true;
+            }
+        }
+        program->ports.push_back(move(port));
+    }
+    return true;
+}
+
+}  // anonymous namespace
+
+bool IRProgram::Crosslink(ErrorCollector* collector) {
+    BBMap bbmap;
+    ValnumMap valnummap;
+    if (!GetBBMap(this, &bbmap, collector)) return false;
+    if (!GetValnumMap(this, &valnummap, collector)) return false;
+    if (!LinkStmts(this, bbmap, valnummap, collector)) return false;
+
+    PortMap portmap;
+    if (!GetPortMap(this, &portmap, collector)) return false;
+    if (!CreatePorts(this, portmap, collector)) return false;
+
+    return true;
+}

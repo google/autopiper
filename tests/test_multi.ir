@@ -1,0 +1,8 @@
+entry bb1:
+%1[32] = const 0
+%2 = portwrite "cross_port", %1
+%3 = done
+
+entry bb2:
+%4[32] = portread "cross_port"
+%5 = done

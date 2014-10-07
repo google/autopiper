@@ -1,0 +1,15 @@
+entry bb1:
+%1[32] = const 42
+%2[32] = add %1, %1
+%3[32] = const 0x50
+%4[32] = and %2, %3
+%5[1] = cmpeq %4, %3
+%10 = portwrite "test_out", %4
+%100 = portexport "test_out"
+%6[32] = if %5, done, bb1
+
+done:
+%7[1] = const 1
+%11 = portwrite "test_done", %7
+%101 = portexport "test_done"
+%12 = done

@@ -764,7 +764,6 @@ void DoExtractSlice(IRStmt* stmt,
 // signal.
 IRBB* CloneKillIfSlice(IRProgram* program,
                        PipeSys* sys,
-                       Pipe* pipe,
                        IRStmt* kill_if,
                        ErrorCollector* coll) {
     // A 'kill_if' condition is meant to be a side-effectless condition that
@@ -801,7 +800,6 @@ IRBB* CloneKillIfSlice(IRProgram* program,
     unique_ptr<IRBB> _cloned_bb(new IRBB());
     IRBB* cloned_bb = _cloned_bb.get();
     program->bbs.push_back(move(_cloned_bb));
-    cloned_bb->pipe = pipe;
     cloned_bb->label = strprintf("__cloned_kill_if_slice_%d",
                                  program->GetValnum());
     for (auto* stmt : stmts) {
@@ -830,11 +828,29 @@ IRBB* CloneKillIfSlice(IRProgram* program,
 
 bool PropagateKillIfDownstream(IRProgram* program,
                                PipeSys* sys,
-                               Pipe* pipe,
                                IRStmt* kill_if_stmt,
                                ErrorCollector* coll) {
-    // TODO: implement.
-    if (!CloneKillIfSlice(program, sys, pipe, kill_if_stmt, coll)) {
+    // General strategy:
+    // - We replicate the kill_if's monitored condition's logic to all
+    //   downstream stages in its own pipe. The logic must have only port reads
+    //   and expression nodes, i.e. no side-effects, so it is safe to replicate
+    //   and evaluate anew in each stage.
+    // - We generate the signal (original kill_if's valid_in) & (replicated
+    //   kill_if condition's result) in each stage.
+    // - We add this signal to a set of 'kill_if triggers' in the given pipestage.
+    //   This set is mixed into the other kills that feed the stage-wide kill
+    //   across the valid-signal cut in AssignKills() below.
+    
+    Pipe* pipe = kill_if_stmt->pipe;
+    for (unsigned i = kill_if_stmt->stage->stage; i < pipe->stages.size(); i++) {
+        PipeStage* clone_stage = pipe->stages[i].get();
+        // TODO.
+        (void)clone_stage;
+    }
+
+    // TODO: implement. This is here to ensure the function is used and avoid a
+    // compiler error.
+    if (!CloneKillIfSlice(program, sys, kill_if_stmt, coll)) {
         return false;
     }
     return true;
@@ -845,14 +861,15 @@ bool PropagateKillIfDownstream(IRProgram* program,
 // valid-crossing across the valid-cut.
 bool InsertKillIfKills(IRProgram* program,
                        PipeSys* sys,
-                       Pipe* pipe,
                        ErrorCollector* coll) {
 
     // Collect all kill_if statements.
     vector<IRStmt*> kill_if_stmts;
-    for (auto* stmt : pipe->stmts) {
-        if (stmt->type == IRStmtKillIf) {
-            kill_if_stmts.push_back(stmt);
+    for (auto& pipe : sys->pipes) {
+        for (auto* stmt : pipe->stmts) {
+            if (stmt->type == IRStmtKillIf) {
+                kill_if_stmts.push_back(stmt);
+            }
         }
     }
 
@@ -864,7 +881,7 @@ bool InsertKillIfKills(IRProgram* program,
     for (auto* kill_if_stmt : kill_if_stmts) {
         // Trace the valid spine downstream, inserting new kills at each
         // pipestage crossing.
-        if (!PropagateKillIfDownstream(program, sys, pipe, kill_if_stmt, coll)) {
+        if (!PropagateKillIfDownstream(program, sys, kill_if_stmt, coll)) {
             return false;
         }
     }
@@ -1143,9 +1160,10 @@ vector<unique_ptr<PipeSys>> IRProgram::Lower(ErrorCollector* coll) {
         // to a model of node delays.
         if (!timer.TimePipe(sys.get(), coll)) goto err;
 
+        // We clone 'kill_if' backward slices downstream to each stage.
+        if (!InsertKillIfKills(this, sys.get(), coll)) goto err;
+
         for (auto& pipe : sys->pipes) {
-            // We clone 'kill_if' backward slices downstream to each stage.
-            if (!InsertKillIfKills(this, sys.get(), pipe.get(), coll)) goto err;
 
             // TODO: check here for 'can only be killed if killyounger' markers
             // and error out if so.

@@ -198,6 +198,8 @@ string IRStmt::ToString() const {
             os << "killyounger"; break;
         case IRStmtDone:
             os << "done"; break;
+        case IRStmtKillIf:
+            os << "killif"; break;
         case IRStmtTimingBarrier:
             os << "timing_barrier"; break;
         case IRStmtBackedge:

@@ -275,6 +275,16 @@ bool CheckStmtWidth(IRStmt* stmt, ErrorCollector* collector) {
         case IRStmtKillYounger:
             // No args.
             break;
+        case IRStmtKillIf:
+            // Must have one arg with width 1 (boolean). Further restrictions
+            // on backward slice (only port reads and expression ops) are
+            // checked much later, after pipelining, when the backward slice is
+            // actually cloned into each pipestage.
+            if (stmt->args.size() != 1 || stmt->args[0]->width != 1) {
+                collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                        "killif statement must have one boolean argument.");
+                return false;
+            }
         default:
             break;
     }

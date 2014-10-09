@@ -171,6 +171,8 @@ enum IRStmtType {
     IRStmtKillYounger,  // kill younger, not self
     IRStmtDone,  // txn completes
 
+    IRStmtKillIf,  // kill self if a condition (first arg) is met at any downstream point.
+
     // Constrain timing.
     IRStmtTimingBarrier,
 
@@ -231,6 +233,7 @@ struct IRStmt {
         is_valid_start = false;
         valid_in = NULL;
         valid_out = NULL;
+        valid_spine = false;
     }
     
     int valnum;
@@ -261,6 +264,11 @@ struct IRStmt {
     Predicate<IRStmt*> valid_out_pred;
     IRStmt* valid_in;
     IRStmt* valid_out;
+    // the result of this stmt is a 'valid' signal. Note that this *cannot* be used
+    // for non-valid-signal-related logic, as valids are added after user logic is
+    // parsed in; in other words, the valid_spine bit is sticky and propagates to
+    // all users.
+    bool valid_spine;
     std::vector<IRStmt*> pipedag_deps; // DAG of side-effecting ops
     PipeStage* stage;  // stage into which this op is placed
 

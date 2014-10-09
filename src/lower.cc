@@ -185,6 +185,7 @@ void ConvertBackedgePhis(
     restart_header->restart_cond->type = IRStmtRestartValue;
     restart_header->restart_cond->width = 1;
     restart_header->restart_cond->is_valid_start = true;
+    restart_header->restart_cond->valid_spine = true;
     restart_header->is_restart = true;
 
     // Generate the source for the restart header's condition/valid signal.
@@ -486,6 +487,7 @@ bool IfConvert(IRProgram* program,
         entry_valid->type = IRStmtRestartValue;
         entry_valid->width = 1;
         entry_valid->is_valid_start = true;
+        entry_valid->valid_spine = true;
     }
     
     // For all 'valid start' entries, initialize predicate.
@@ -535,9 +537,15 @@ bool IfConvert(IRProgram* program,
             if (stmt->is_valid_start) {
                 // Already set above.
             } else if (stmt->type == IRStmtKill) {
-                // TODO: kills from other places should merge into this kill
-                // signal. (Do this via a port-read?)
                 stmt->valid_out_pred = Predicate<IRStmt*>::False();
+            } else if (stmt->type == IRStmtKillIf) {
+                // KillIf kills immediately (in this stage) and is also
+                // replicated downstream at each successive pipestage, after
+                // pipe timing occurs, to create the "continuous monitoring"
+                // semantics. Here we just need to create a predicate that is
+                // gated by the inverse of its arg.
+                stmt->valid_out_pred =
+                    stmt->valid_in_pred.AndWith(stmt->args[0], false);
             } else {
                 stmt->valid_out_pred = stmt->valid_in_pred;
             }
@@ -584,6 +592,28 @@ bool IfConvert(IRProgram* program,
         if (bb->restart_pred_src) {
             bb->restart_pred_src->args.push_back(bb->restart_pred_src->valid_in);
             bb->restart_pred_src->arg_nums.push_back(bb->restart_pred_src->valid_in->valnum);
+        }
+    }
+
+    // Make a pass to propagate valid_spine bits.
+    bool changed_valid_spine = true;
+    while (changed_valid_spine) {
+        changed_valid_spine = false;
+        // Yes, this would be more efficient if we traversed stmt nodes in RPO.
+        // This is quick and easy, though, and in practice the nodes are
+        // *mostly* in the right order.
+        for (auto* bb : pipe->bbs) {
+            for (auto& stmt : bb->stmts) {
+                bool old = stmt->valid_spine;
+                for (auto* arg : stmt->args) {
+                    if (arg->valid_spine) {
+                        stmt->valid_spine = true;
+                    }
+                }
+                if (stmt->valid_spine != old) {
+                    changed_valid_spine = true;
+                }
+            }
         }
     }
 
@@ -717,12 +747,136 @@ bool FlattenPipe(IRProgram* program,
     return true;
 }
 
+// DFS usd to extract slice.
+void DoExtractSlice(IRStmt* stmt,
+                    set<IRStmt*>* seen,
+                    vector<IRStmt*>* postorder) {
+    seen->insert(stmt);
+    for (auto* arg : stmt->args) {
+        if (seen->find(arg) != seen->end()) continue;
+        DoExtractSlice(arg, seen, postorder);
+    }
+    postorder->push_back(stmt);
+}
+
+// Clones the backward slice of the 'kill_if' op given and returns all stmts.
+// They can then be placed in a downstream stage of this pipe to produce a kill
+// signal.
+IRBB* CloneKillIfSlice(IRProgram* program,
+                       PipeSys* sys,
+                       Pipe* pipe,
+                       IRStmt* kill_if,
+                       ErrorCollector* coll) {
+    // A 'kill_if' condition is meant to be a side-effectless condition that
+    // can be evaluated repeatedly and can be placed arbitrarily in the pipe
+    // without constraining other nodes. As such, it must only contain port
+    // reads (not chan reads!) and expression statements. We enforce this as we
+    // collect the backward slice by finding the transitive closure of
+    // statement args.
+    
+    set<IRStmt*> seen;  // to avoid collecting a statement twice, if DAG (non-tree)
+    vector<IRStmt*> stmts;
+    // Run a simple DFS to extract the slice. stmts is filled with the
+    // postorder result of the traversal. This is the order in which we want
+    // to return the slice (*not* reverse postorder), since the edges we follow
+    // are initially backward (edges from use to def).
+    DoExtractSlice(kill_if, &seen, &stmts);
+    
+    // Check to make sure we have only port reads and expr nodes.
+    for (auto* stmt : stmts) {
+        if (stmt->type != IRStmtPortRead && stmt->type != IRStmtExpr &&
+            stmt != kill_if) {
+            coll->ReportError(stmt->location, ErrorCollector::ERROR,
+                    strprintf("Statement %%%d is not a port read or expression "
+                              "statement, hence is not allowed in the transitive "
+                              "backward slice of kill_if node %%%d",
+                              stmt->valnum, kill_if->valnum));
+            return nullptr;
+        }
+
+    }
+    
+    // Clone: produce new valnums and build a mapping of old->new pointers
+    map<IRStmt*, IRStmt*> replace_map;
+    unique_ptr<IRBB> _cloned_bb(new IRBB());
+    IRBB* cloned_bb = _cloned_bb.get();
+    program->bbs.push_back(move(_cloned_bb));
+    cloned_bb->pipe = pipe;
+    cloned_bb->label = strprintf("__cloned_kill_if_slice_%d",
+                                 program->GetValnum());
+    for (auto* stmt : stmts) {
+        unique_ptr<IRStmt> cloned_stmt(new IRStmt(*stmt));
+        cloned_stmt->valnum = program->GetValnum();
+        cloned_stmt->bb = cloned_bb;
+        cloned_stmt->stage = nullptr;  // filled in by caller later.
+        replace_map[stmt] = cloned_stmt.get();
+        cloned_bb->stmts.push_back(move(cloned_stmt));
+    }
+
+    // Make a pass to replace args.
+    for (auto& stmt : cloned_bb->stmts) {
+        for (unsigned i = 0; i < stmt->args.size(); i++) {
+            auto it = replace_map.find(stmt->args[i]);
+            // We took the full backward slice, so all args should be part of
+            // the cloned statement set. Thus this lookup should never fail.
+            assert(it != replace_map.end());
+            stmt->args[i] = it->second;
+            stmt->arg_nums[i] = it->second->valnum;
+        }
+    }
+
+    return cloned_bb;
+}
+
+bool PropagateKillIfDownstream(IRProgram* program,
+                               PipeSys* sys,
+                               Pipe* pipe,
+                               IRStmt* kill_if_stmt,
+                               ErrorCollector* coll) {
+    // TODO: implement.
+    if (!CloneKillIfSlice(program, sys, pipe, kill_if_stmt, coll)) {
+        return false;
+    }
+    return true;
+}
+
+// For each 'kill_if' op, leave the original but also clone the op and its
+// backward slice to each stage downstream and add a 'kill' op per
+// valid-crossing across the valid-cut.
+bool InsertKillIfKills(IRProgram* program,
+                       PipeSys* sys,
+                       Pipe* pipe,
+                       ErrorCollector* coll) {
+
+    // Collect all kill_if statements.
+    vector<IRStmt*> kill_if_stmts;
+    for (auto* stmt : pipe->stmts) {
+        if (stmt->type == IRStmtKillIf) {
+            kill_if_stmts.push_back(stmt);
+        }
+    }
+
+    // For each original kill_if, iterate down the pipe (i.e. along the
+    // downstream valid-spines), inserting clones of the continuously-evaluated
+    // kill condition at each new stage. Each clone of the kill_if DAG generates a
+    // kill = valid_in & kill_condition, and this condition is added to a list
+    // picked up by AssignKills below.
+    for (auto* kill_if_stmt : kill_if_stmts) {
+        // Trace the valid spine downstream, inserting new kills at each
+        // pipestage crossing.
+        if (!PropagateKillIfDownstream(program, sys, pipe, kill_if_stmt, coll)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 // Assigns 'stall' signals to pipestages: each stage stalls if any later
 // 'backedge' evaluates. We simply take the OR of all backedge predicates.
 // Note that the predicates from later stage backedges must be marked such that
 // they do *not* constrain stage scheduling, and do *not* get staged across
 // pipestage boundaries: they are "cross-stage" signals.
-// TODO: implement this.
 bool AssignStalls(IRProgram* program,
                   PipeSys* sys,
                   Pipe* pipe,
@@ -797,7 +951,9 @@ bool AssignKills(IRProgram* program,
     //     killyoungers, and (ii) all later backedges. Build the OR-tree for
     //     this.
     //   - Find all valids entering this pipestage, i.e. 'valid_in' signals on
-    //     statements that come from statements in earlier stages.
+    //     statements that come from statements in earlier stages, and any input
+    //     on valid_spine ops (these are gates generated by predication that carry
+    //     valid pulses down the pipeline).
     //   - For each such signal, insert an AND gate to qualify (gate) the
     //     incoming valid with its other input the inverse of the kill.
     
@@ -839,10 +995,10 @@ bool AssignKills(IRProgram* program,
         }
 
         // The kill signal for this stage is the OR of its killyounger-derived
-        // kill (above) and its stall signal. The reason for the latter is that
-        // if the stage is stalled, its internal logic must be prevented from
-        // invoking its side-effects; in such a case, the stage's output
-        // latches will hold the prior output.
+        // kill (above), any downstream kill_if clones, and its stall signal.
+        // The reason for the latter is that if the stage is stalled, its
+        // internal logic must be prevented from invoking its side-effects; in
+        // such a case, the stage's output latches will hold the prior output.
         if (stage->stall) {
             // insert an OR, if necessary.
             if (kill_signal != nullptr) {
@@ -868,12 +1024,20 @@ bool AssignKills(IRProgram* program,
             // Now find the valid-cut across inputs to this stage: all valid_ins
             // that come from prior stages. We will insert ANDs to gate each of
             // these valids and a map of substitutions, then make a second pass to
-            // substitute all uses of the 'valid' signals as valids (*not*
-            // as true logic signals).
+            // substitute all uses of the 'valid' signals when they are either
+            // valid_ins on any stmt, or when they are ordinary args on
+            // valid_spine stmts.
             set<IRStmt*> valid_cut;
             for (auto* stmt : stage->stmts) {
                 if (stmt->valid_in && stmt->valid_in->stage->stage < i) {
                     valid_cut.insert(stmt->valid_in);
+                }
+                if (stmt->valid_spine) {
+                    for (auto* arg : stmt->args) {
+                        if (arg->stage->stage < i) {
+                            valid_cut.insert(arg);
+                        }
+                    }
                 }
             }
             // TODO: abstract out this "create a new BB" pattern.
@@ -895,10 +1059,19 @@ bool AssignKills(IRProgram* program,
             }
 
             for (auto* stmt : stage->stmts) {
-                if (!stmt->valid_in) continue;
-                auto it = valid_replacements.find(stmt->valid_in);
-                if (it != valid_replacements.end()) {
-                    stmt->valid_in = it->second;
+                if (stmt->valid_in) {
+                    auto it = valid_replacements.find(stmt->valid_in);
+                    if (it != valid_replacements.end()) {
+                        stmt->valid_in = it->second;
+                    }
+                }
+                if (stmt->valid_spine) {
+                    for (int i = 0; i < stmt->args.size(); i++) {
+                        auto it = valid_replacements.find(stmt->args[i]);
+                        if (it != valid_replacements.end()) {
+                            stmt->args[i] = it->second;
+                        }
+                    }
                 }
             }
 
@@ -909,13 +1082,6 @@ bool AssignKills(IRProgram* program,
             }
             program->bbs.push_back(move(valid_cut_gating_bb));
         }
-
-        // TODO: if valid_if, replicate its condition logic across the
-        // valid-cut for this stage.
-        //
-        // TODO: if on_kill, replicate its statements at all kill-points,
-        // predicated by the kill-condition (include 'kill' statements in this,
-        // even though we don't process them here.)
     }
 
     return true;
@@ -978,6 +1144,12 @@ vector<unique_ptr<PipeSys>> IRProgram::Lower(ErrorCollector* coll) {
         if (!timer.TimePipe(sys.get(), coll)) goto err;
 
         for (auto& pipe : sys->pipes) {
+            // We clone 'kill_if' backward slices downstream to each stage.
+            if (!InsertKillIfKills(this, sys.get(), pipe.get(), coll)) goto err;
+
+            // TODO: check here for 'can only be killed if killyounger' markers
+            // and error out if so.
+
             // We assign stall signals *after* pipelining because the
             // signals depend on the pipestage assignments.
             if (!AssignStalls(this, sys.get(), pipe.get(), coll)) goto err;

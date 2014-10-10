@@ -90,6 +90,7 @@ bool FindPipes(IRProgram* program,
                     unique_ptr<Pipe> spawned(new Pipe());
                     spawned->entry = target;
                     spawned->parent = pipe.get();
+                    spawned->parent->children.push_back(spawned.get());
                     spawned->sys = sys;
                     spawned->spawn = stmt.get();
                     to_process.push(move(spawned));
@@ -762,10 +763,11 @@ void DoExtractSlice(IRStmt* stmt,
 // Clones the backward slice of the 'kill_if' op given and returns all stmts.
 // They can then be placed in a downstream stage of this pipe to produce a kill
 // signal.
-IRBB* CloneKillIfSlice(IRProgram* program,
-                       PipeSys* sys,
-                       IRStmt* kill_if,
-                       ErrorCollector* coll) {
+IRStmt* CloneKillIfSlice(IRProgram* program,
+                         PipeSys* sys,
+                         IRStmt* kill_if,
+                         IRBB** out_bb,
+                         ErrorCollector* coll) {
     // A 'kill_if' condition is meant to be a side-effectless condition that
     // can be evaluated repeatedly and can be placed arbitrarily in the pipe
     // without constraining other nodes. As such, it must only contain port
@@ -802,7 +804,14 @@ IRBB* CloneKillIfSlice(IRProgram* program,
     program->bbs.push_back(move(_cloned_bb));
     cloned_bb->label = strprintf("__cloned_kill_if_slice_%d",
                                  program->GetValnum());
+    IRStmt* cloned_condition = nullptr;
     for (auto* stmt : stmts) {
+        if (stmt == kill_if) {
+            // The kill_if itself doesn't go in the cloned slice -- we just use
+            // its condition.
+            cloned_condition = stmt->args[0];
+            continue;
+        }
         unique_ptr<IRStmt> cloned_stmt(new IRStmt(*stmt));
         cloned_stmt->valnum = program->GetValnum();
         cloned_stmt->bb = cloned_bb;
@@ -822,8 +831,31 @@ IRBB* CloneKillIfSlice(IRProgram* program,
             stmt->arg_nums[i] = it->second->valnum;
         }
     }
+    assert(replace_map.find(cloned_condition) != replace_map.end());
+    cloned_condition = replace_map[cloned_condition];
 
-    return cloned_bb;
+    *out_bb = cloned_bb;
+    return cloned_condition;
+}
+
+// Return all pipestages downstream of a kill_if. These are all stages in the
+// kill_if's pipe and its child pipes (by the spawn tree).
+vector<PipeStage*> KillIfDownstreamStages(IRStmt* kill_if_stmt) {
+    vector<PipeStage*> ret;
+    queue<Pipe*> q;  // BFS queue
+    q.push(kill_if_stmt->pipe);
+    while (!q.empty()) {
+        Pipe* p = q.front();
+        q.pop();
+        for (auto* child : p->children) {
+            q.push(child);
+        }
+        for (unsigned i = kill_if_stmt->stage->stage + 1;
+             i < p->stages.size(); i++) {
+            ret.push_back(p->stages[i].get());
+        }
+    }
+    return ret;
 }
 
 bool PropagateKillIfDownstream(IRProgram* program,
@@ -832,27 +864,68 @@ bool PropagateKillIfDownstream(IRProgram* program,
                                ErrorCollector* coll) {
     // General strategy:
     // - We replicate the kill_if's monitored condition's logic to all
-    //   downstream stages in its own pipe. The logic must have only port reads
-    //   and expression nodes, i.e. no side-effects, so it is safe to replicate
-    //   and evaluate anew in each stage.
+    //   downstream stages in its own pipe and in child pipes. The logic must
+    //   have only port reads and expression nodes, i.e. no side-effects, so it
+    //   is safe to replicate and evaluate anew in each stage.
+    //       - Why downstream stages only, and only its own pipe and child pipes?
+    //             - The semantics of a kill_if are that it follows
+    //               control-flow, including across spawns.
+    //             - Within its own stage, the valid_out of a kill_if goes
+    //               false if the kill condition occurs, so everything naturally
+    //               works out. Hence only worry about downstream stages.
+    //             - To maintain the "continuous monitoring" semantics, though,
+    //               we need to check once every time state changes, i.e., once
+    //               per cycle, so we must insert clones in all downstream
+    //               stages. Our cloned logic is qualified by (ANDed with) the
+    //               valid_in of the original kill_if, staged downstream, so it
+    //               can signal a kill only if control passed through the
+    //               original kill_if, after which it is "attached" forever to
+    //               the control flow.
+    //            - But this is true only for the pipe itself and any pipes we
+    //              spawned -- other unrelated pipes (ancestors or siblings) do
+    //              not have the kill_if attached and should be left alone.)
     // - We generate the signal (original kill_if's valid_in) & (replicated
     //   kill_if condition's result) in each stage.
     // - We add this signal to a set of 'kill_if triggers' in the given pipestage.
     //   This set is mixed into the other kills that feed the stage-wide kill
     //   across the valid-signal cut in AssignKills() below.
     
-    Pipe* pipe = kill_if_stmt->pipe;
-    for (unsigned i = kill_if_stmt->stage->stage; i < pipe->stages.size(); i++) {
-        PipeStage* clone_stage = pipe->stages[i].get();
-        // TODO.
-        (void)clone_stage;
+
+    // Determine the set of pipes we propagate across: this pipe and any children.
+    
+    auto downstream_stages = KillIfDownstreamStages(kill_if_stmt);
+    for (auto* stage : downstream_stages) {
+        IRBB* cloned_bb;
+        IRStmt* arg = CloneKillIfSlice(program, sys, kill_if_stmt, &cloned_bb, coll);
+        for (auto& stmt : cloned_bb->stmts) {
+            stmt->stage = stage;
+            stmt->pipe = stage->pipe;
+            stmt->valid_in = kill_if_stmt->valid_in;
+            stage->pipe->stmts.push_back(stmt.get());
+            stage->stmts.push_back(stmt.get());
+        }
+
+        // Add an AND: kill_if's valid_in & cloned kill_if arg.
+        unique_ptr<IRStmt> kill_cond(new IRStmt());
+        kill_cond->type = IRStmtExpr;
+        kill_cond->op = IRStmtOpAnd;
+        kill_cond->valnum = program->GetValnum();
+        kill_cond->bb = cloned_bb;
+        kill_cond->stage = stage;
+        kill_cond->pipe = stage->pipe;
+
+        kill_cond->args.push_back(arg);
+        kill_cond->arg_nums.push_back(arg->valnum);
+        kill_cond->args.push_back(kill_if_stmt->valid_in);
+        kill_cond->arg_nums.push_back(kill_if_stmt->valid_in->valnum);
+
+        stage->kills.push_back(kill_cond.get());
+
+        stage->pipe->stmts.push_back(kill_cond.get());
+        stage->stmts.push_back(kill_cond.get());
+        cloned_bb->stmts.push_back(move(kill_cond));
     }
 
-    // TODO: implement. This is here to ensure the function is used and avoid a
-    // compiler error.
-    if (!CloneKillIfSlice(program, sys, kill_if_stmt, coll)) {
-        return false;
-    }
     return true;
 }
 
@@ -991,6 +1064,10 @@ bool AssignKills(IRProgram* program,
                 }
             }
         }
+        // Add additional kills (e.g. from kill_if).
+        for (auto* kill : stage->kills) {
+            kill_inputs.push_back(kill);
+        }
         
         // Generate an OR-tree across all kill inputs if we had any.
         IRStmt* kill_signal = nullptr;
@@ -1065,6 +1142,7 @@ bool AssignKills(IRProgram* program,
             IRStmt* not_kill = builder.AddStmt(unique_ptr<IRStmt>(new IRStmt()));
             not_kill->type = IRStmtExpr;
             not_kill->op = IRStmtOpNot;
+            not_kill->valnum = program->GetValnum();
             not_kill->bb = valid_cut_gating_bb.get();
             not_kill->args.push_back(kill_signal);
             not_kill->arg_nums.push_back(kill_signal->valnum);

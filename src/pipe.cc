@@ -39,6 +39,14 @@ string Pipe::ToString() const {
     if (!stages.empty()) {
         for (auto& stage : stages) {
             os << "Pipestage " << stage->stage << endl;
+            if (stage->stall) {
+                os << "Stall = %" << stage->stall->valnum << endl;
+            }
+            os << "Kills = { ";
+            for (auto* kill : stage->kills) {
+                os << "%" << kill->valnum << ", ";
+            }
+            os << " }" << endl;
             for (auto* stmt : stage->stmts) {
                 os << stmt->ToString() << endl;
             }

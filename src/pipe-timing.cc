@@ -218,6 +218,7 @@ bool PipeTimer::TimePipe(PipeSys* sys, ErrorCollector* coll) const {
                    pipe->stages.back()->stage < stage_number) {
                 std::unique_ptr<PipeStage> new_stage(new PipeStage());
                 new_stage->stage = pipe->stages.size();
+                new_stage->pipe = pipe;
                 pipe->stages.push_back(move(new_stage));
             }
             PipeStage* pipestage = pipe->stages.back().get();

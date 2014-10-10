@@ -68,18 +68,6 @@ void VerilogGenerator::Generate() {
             }
         }
     }
-    // Ensure that stall signals are staged to the right places. We do this
-    // before generating staging flops because stall signals may themselves
-    // require staging flops.
-    for (auto* sys : systems_) {
-        for (auto& pipe : sys->pipes) {
-            for (auto& stage : pipe->stages) {
-                if (stage->stall) {
-                    GetSignalInStage(stage->stall, stage->stage);
-                }
-            }
-        }
-    }
     // Generate flops between each pipestage for each signal.
     for (auto& p : signal_stages_) {
         const auto* signal = p.first;
@@ -209,14 +197,13 @@ void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
             break;
 
         case IRStmtSpawn:
-            // Nothing required -- valid-signal linkage takes care of this
-            // automatically.
-            break;
         case IRStmtKill:
-            // Likewise, nothing required -- all the magic is in the valid-signal.
-            break;
+        case IRStmtKillIf:
+            // Nothing required -- valid-signal linkage takes care of these
+            // automatically.
 
         case IRStmtKillYounger:
+            // Nothing required -- recognized in AssignKills().
             break;
 
         case IRStmtTimingBarrier:
@@ -367,9 +354,13 @@ void VerilogGenerator::GenerateStaging(const IRStmt* stmt) {
         out_->SetVars({
             { "src", SignalName(stmt, i) },
             { "dst", SignalName(stmt, i+1) },
+            // Valid signal is staged because it logically travels with the txn.
             { "valid", stmt->valid_in ? SignalName(stmt->valid_in, i) : "1'b1" },
-            { "stall", stmt->pipe->stages[i]->stall ?
-                       SignalName(stmt->pipe->stages[i]->stall, i) : "1'b0" },
+            // Stall signal is not staged -- comes directly from combinational
+            // logic that generates it.
+            { "hold",  stmt->pipe->stages[i]->stall ?
+                       SignalName(stmt->pipe->stages[i]->stall,
+                                  stmt->pipe->stages[i]->stall->stage->stage) : "1'b0" },
             { "width", strprintf("%d", stmt->width) },
             { "instance_name", SignalName(stmt, i+1) + "_pipereg" },
         });
@@ -378,7 +369,7 @@ void VerilogGenerator::GenerateStaging(const IRStmt* stmt) {
                     "  .src($src$),\n"
                     "  .dst($dst$),\n"
                     "  .valid($valid$),\n"
-                    "  .stall($stall$),\n"
+                    "  .hold($hold$),\n"
                     "  .clock(clock),\n"
                     "  .reset(reset));\n");
     }

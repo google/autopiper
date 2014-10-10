@@ -1,0 +1,27 @@
+entry bb1:
+%1[32] = const 0
+%2[32] = add %1, %1
+%3 = jmp bb2
+
+bb2:
+%5[32] = const 1
+%6[32] = add %2, %5
+%7[32] = const 10
+%8[1] = cmplt %6, %7
+%100 = killif %8
+%9 = if %8, bb3, bb4
+
+bb3:
+%10[txn] = spawn bb10
+%11 = jmp bb4
+
+bb4:
+%12 = kill
+
+bb10:
+%13 = timing_barrier @[bb10_timing + 0]
+%14 = timing_barrier @[bb10_timing + 1]
+%15[1] = const 1
+%16 = chanwrite "bb10_done", %15
+%17 = timing_barrier @[bb10_timing + 1]
+%18 = kill

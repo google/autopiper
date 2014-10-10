@@ -562,6 +562,7 @@ bool IdentToStatementType(string ident,
     S("kill", IRStmtKill,  StmtArgNone);
     S("killyounger", IRStmtKillYounger, StmtArgNone);
     S("done", IRStmtDone, StmtArgNone);
+    S("killif", IRStmtKillIf, StmtArgValnum);
 
     S("timing_barrier", IRStmtTimingBarrier, StmtArgNone);
 

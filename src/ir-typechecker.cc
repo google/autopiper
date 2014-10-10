@@ -31,28 +31,16 @@ namespace {
 
 bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
     int width = -1;  // -1: not yet determined
-    // Pass 1: derive width from writes. All writes must have the same width.
+
+    // Pass 1: derive width.
+    // Look for a write first -- if present, this defines the width.
     if (port->def) {
-        int write_width = port->def->args[0]->width;
-        if (width == -1) {
-            width = write_width;
-        } else if (write_width != width) {
-            collector->ReportError(port->def->location, ErrorCollector::ERROR,
-                    strprintf("Port write width of %d does not match derived "
-                              "width of %d on port '%s'",
-                              write_width, width, port->name.c_str()));
-            return false;
-        }
+        width = port->def->args[0]->width;
     }
-    port->width = width;
-    if (width < 1) {
-        Location empty_loc;
-        collector->ReportError(port->def ? port->def->location :
-                               port->uses.size() > 0 ? port->uses[0]->location :
-                               empty_loc,
-                               ErrorCollector::ERROR,
-                               strprintf("Port '%s' has zero width",
-                                         port->name.c_str()));
+    // If no writes, pick a width from the first read (they must all have the
+    // same width).
+    if (width == -1 && port->uses.size() > 0) {
+        width = port->uses[0]->width;
     }
 
     // Pass 2: check derived width against reads.

@@ -45,6 +45,7 @@ struct Pipe {
     std::vector<std::pair<IRStmt*,IRStmt*>> backedges;  // pointers to the If ops and their targets
 
     Pipe* parent;     // spawn parent
+    std::vector<Pipe*> children;  // spawned (direct) children
     PipeSys* sys;     // pipesys: whole tree of pipes
     IRStmt* spawn;    // spawning statement
 
@@ -68,6 +69,14 @@ struct PipeStage {
     // stall signal, if any (this stage retains its content and deasserts valid
     // downstream)
     IRStmt* stall;
+
+    // Kills that kill the whole stage, across the input valid-cut. This does
+    // not include any killyoungers -- those are accounted for directly in
+    // AssignKills() -- but can include inputs from other transforms, e.g.
+    // kill_if condition clone insertion.
+    std::vector<IRStmt*> kills;
+
+    Pipe* pipe;
 };
 
 struct PipeSys {

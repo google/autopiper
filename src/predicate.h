@@ -90,6 +90,9 @@ class Predicate {
         if (falsified) return; // false & A == false -- short-circuit this.
         if (factors.find(t) != factors.end() &&
             factors[t] == !polarity) {
+            // Note: we don't need to clear factors here because
+            // Predicate::Simplify() will remove this term once |falisified| is
+            // set.
             falsified = true;
         } else {
             factors[t] = polarity;
@@ -105,7 +108,7 @@ class Predicate {
         // false | X = X | false = X. Just let it be and predicate
         // simplification will remove falsified terms (and render the
         // predicate either falsified or tautological).
-        if (falsified || other->falsified) return false;  
+        if (falsified || other->falsified) return false;
 
         // factors are stored in T-order, so we can iterate through to find
         // differences in linear time. We implement S1 (AB | A~B = A) and S2
@@ -277,17 +280,22 @@ class Predicate {
   // Simplification pass: (i) remove falsified terms; (ii) if any tautological
   // terms are present, remove all terms except this one.
   void Simplify() {
+      // is_tautological indicates, if |new_terms| is empty, whether the
+      // predicate is constant true or constant false.
       bool is_tautological = false;
       std::vector<Term> new_terms;
       for (auto& term : terms) {
           if (term.falsified) continue;
           if (term.factors.empty()) {
+              // Once we OR in a constant-true term, the predicate must be
+              // constant true.
               is_tautological = true;
               break;
           }
           new_terms.push_back(term);
       }
       if (is_tautological) {
+          // Constant true is represented by a single empty term.
           terms.clear();
           terms.push_back(Term());
       } else {

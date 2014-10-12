@@ -89,16 +89,17 @@ string Printer::Format(const string& fmt) const {
                     }
                 }
                 in_varname = false;
-            } else { varname += c;
-                if (c == '\n') {
-                    start_line = true;
-                }
+            } else {
+                varname += c;
             }
         } else {
             if (c == '$') {
                 in_varname = true;
             } else {
                 out += c;
+                if (c == '\n') {
+                    start_line = true;
+                }
             }
         }
     }

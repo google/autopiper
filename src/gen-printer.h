@@ -38,8 +38,8 @@ class Printer {
   void SetVars(const std::vector<PrintArg>& args);
   std::string Lookup(const std::string& name) const;
 
-  void Indent() { indent_--; }
-  void Outdent() { indent_++; }
+  void Indent() { indent_++; }
+  void Outdent() { indent_--; }
   void SetTabWidth(int width) { tab_width_ = width; }
 
   std::string Format(const std::string& fmt) const;

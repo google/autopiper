@@ -43,6 +43,8 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
         width = port->uses[0]->width;
     }
 
+    port->width = width;
+
     // Pass 2: check derived width against reads.
     for (auto* use : port->uses) {
         if (use->width != width) {
@@ -82,6 +84,109 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
                                ErrorCollector::ERROR,
                                strprintf("Chan '%s' cannot be exported; only ports can be exported",
                                          port->name.c_str()));
+    }
+    
+    return true;
+}
+
+bool DeriveStorageSize(IRStorage* storage, ErrorCollector* collector) {
+    // There must be at least one writer.
+    if (storage->writers.empty()) {
+        Location loc;
+        if (storage->readers.size() > 0) {
+            loc = storage->readers[0]->location;
+        }
+        collector->ReportError(loc, ErrorCollector::ERROR,
+                strprintf("Storage '%s' has no writers. At least "
+                          "one writer required.",
+                          storage->name.c_str()));
+        return false;
+    }
+
+    // Determine width and elems by surveying writers.
+    int index_width = -1, data_width = -1;
+    for (auto* writer : storage->writers) {
+        int stmt_index_width = (writer->type == IRStmtRegWrite) ?
+            0 :                     // single reg: always 1 elem (2^0 == 1)
+            writer->args[0]->width; // array: first arg is index
+        int stmt_data_width = (writer->type == IRStmtRegWrite) ?
+            writer->args[0]->width : // single reg: first arg is data
+            writer->args[1]->width;  // array: second arg is data
+
+        if (writer->type == IRStmtArrayWrite) {
+            if (stmt_index_width <= 0) {
+            collector->ReportError(writer->location, ErrorCollector::ERROR,
+                    "Index width on array write must be greater than zero.");
+            return false;
+            }
+            if (stmt_index_width >= 64) {
+                collector->ReportError(writer->location, ErrorCollector::ERROR,
+                        strprintf("Writer index-width %d for storage '%s' is "
+                            "too large: maximum is 64 bits (2^64 entries).",
+                            stmt_index_width, storage->name.c_str()));
+                return false;
+            }
+        }
+
+        if (index_width == -1) {
+            index_width = stmt_index_width;
+        } else if (index_width != stmt_index_width) {
+            collector->ReportError(writer->location, ErrorCollector::ERROR,
+                    strprintf("Writer index-width %d does not match previous %d",
+                        stmt_index_width, index_width));
+            return false;
+        }
+
+        if (data_width == -1) {
+            if (stmt_data_width <= 0) {
+                collector->ReportError(writer->location, ErrorCollector::ERROR,
+                        strprintf("Writer data-width for storage '%s' "
+                                  "must be greater than zero.", storage->name.c_str()));
+                return false;
+            }
+            data_width = stmt_data_width;
+        } else if (data_width != stmt_data_width) {
+            collector->ReportError(writer->location, ErrorCollector::ERROR,
+                    strprintf("Writer data-width %d does not match previous %d",
+                        stmt_data_width, data_width));
+        }
+    }
+
+    assert(index_width >= 0);
+    assert(data_width >= 0);
+    storage->index_width = index_width;
+    storage->data_width = data_width;
+
+    // If single reg, we cannot allow more than one writer.
+    if (index_width == 0 && storage->writers.size() > 1) {
+        collector->ReportError(storage->writers[1]->location, ErrorCollector::ERROR,
+                strprintf("More than one writer for single register storage '%s'. "
+                          "Only one writer allowed.", storage->name.c_str()));
+        return false;
+    }
+
+    // Check that all readers match index and data width.
+    for (auto* reader : storage->readers) {
+        int stmt_index_width = (reader->type == IRStmtRegRead) ?
+            0 :                     // single reg: always 1 elem (2^0 == 1)
+            reader->args[0]->width; // array: first arg is index
+
+        if (reader->type == IRStmtArrayRead && stmt_index_width <= 0) {
+            collector->ReportError(reader->location, ErrorCollector::ERROR,
+                    "Index width on array read must be greater than zero.");
+            return false;
+        }
+
+        if (stmt_index_width != storage->index_width) {
+            collector->ReportError(reader->location, ErrorCollector::ERROR,
+                    "Index width does not match on storage reader.");
+            return false;
+        }
+        if (reader->width != storage->data_width) {
+            collector->ReportError(reader->location, ErrorCollector::ERROR,
+                    "Data width does not match on storage reader.");
+            return false;
+        }
     }
     
     return true;
@@ -238,15 +343,11 @@ bool CheckStmtWidth(IRStmt* stmt, ErrorCollector* collector) {
         case IRStmtChanRead:
         case IRStmtChanWrite:
         case IRStmtPortExport:
-            // Already checked.
-            break;
-
         case IRStmtRegRead:
         case IRStmtRegWrite:
         case IRStmtArrayRead:
         case IRStmtArrayWrite:
-            // TODO
-            assert(false);
+            // Already checked.
             break;
 
         case IRStmtProvide:
@@ -410,6 +511,9 @@ bool IRProgram::Typecheck(ErrorCollector* collector) {
     }
     for (auto& port : ports) {
         if (!DerivePortWidth(port.get(), collector)) return false;
+    }
+    for (auto& storage : storage) {
+        if (!DeriveStorageSize(storage.get(), collector)) return false;
     }
     for (auto& bb : bbs) {
         if (!CheckBB(bb.get(), collector)) return false;

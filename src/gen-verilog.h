@@ -67,6 +67,9 @@ class VerilogGenerator {
   void GenerateModuleEnd();
   void GenerateModulePortDef(const IRPort* port);
 
+  // Generate a storage element.
+  void GenerateStorage(const IRStorage* storage);
+
   // Helper: GenerateNode()
   void GenerateNodeExpr(const IRStmt* stmt,
                         const std::vector<std::string>& args);

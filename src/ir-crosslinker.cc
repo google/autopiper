@@ -16,6 +16,7 @@
 
 #include "ir.h"
 #include "compiler.h"
+#include "util.h"
 
 #include <map>
 #include <vector>
@@ -84,6 +85,26 @@ bool GetPortMap(IRProgram* program,
     return true;
 }
 
+typedef map<string, vector<IRStmt*>> StorageMap;
+
+bool GetStorageMap(IRProgram* program,
+                   StorageMap* m,
+                   ErrorCollector* collector) {
+    for (auto& bb : program->bbs) {
+        for (auto& stmt : bb->stmts) {
+            if (!IRReadsStorage(stmt->type) &&
+                !IRWritesStorage(stmt->type)) continue;
+            if (stmt->port_name == "") {
+                collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                        "Empty storage name");
+                return false;
+            }
+            (*m)[stmt->port_name].push_back(stmt.get());
+        }
+    }
+    return true;
+}
+
 bool LinkStmts(IRProgram* program,
                BBMap& targets,
                ValnumMap& valnums,
@@ -123,7 +144,12 @@ bool CreatePorts(IRProgram* program,
         for (auto* stmt : stmts) {
             stmt->port = port.get();
             if (IRWritesPort(stmt->type)) {
-                assert(!port->def);
+                if (port->def != NULL) {
+                    collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                            strprintf("Multiple writers to port '%s' (first writer is %%%d)",
+                                port->name.c_str(), port->def->valnum));
+                    return false;
+                }
                 port->def = stmt;
                 if (stmt->type == IRStmtPortWrite) {
                     port->type = IRPort::PORT;
@@ -143,6 +169,28 @@ bool CreatePorts(IRProgram* program,
     return true;
 }
 
+bool CreateStorage(IRProgram* program,
+                   const StorageMap& m,
+                   ErrorCollector* collector) {
+    for (auto& pair : m) {
+        auto storagename = pair.first;
+        auto stmts = pair.second;
+        unique_ptr<IRStorage> storage(new IRStorage());
+        storage->name = storagename;
+        for (auto* stmt : stmts) {
+            stmt->storage = storage.get();
+            if (IRWritesStorage(stmt->type)) {
+                storage->writers.push_back(stmt);
+            }
+            if (IRReadsStorage(stmt->type)) {
+                storage->readers.push_back(stmt);
+            }
+        }
+        program->storage.push_back(move(storage));
+    }
+    return true;
+}
+
 }  // anonymous namespace
 
 bool IRProgram::Crosslink(ErrorCollector* collector) {
@@ -155,6 +203,10 @@ bool IRProgram::Crosslink(ErrorCollector* collector) {
     PortMap portmap;
     if (!GetPortMap(this, &portmap, collector)) return false;
     if (!CreatePorts(this, portmap, collector)) return false;
+
+    StorageMap storagemap;
+    if (!GetStorageMap(this, &storagemap, collector)) return false;
+    if (!CreateStorage(this, storagemap, collector)) return false;
 
     return true;
 }

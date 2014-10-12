@@ -1,0 +1,10 @@
+entry bb1:
+%1[32] = regread "my_reg"
+%2 = regwrite "my_reg", %1
+%100[4] = const 8
+%101[4] = const 4
+%102[32] = const 0
+%3[32] = arrayread "my_array", %100
+%4 = arraywrite "my_array", %100, %3
+%5 = arraywrite "my_array", %101, %102
+%10 = done

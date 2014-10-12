@@ -35,6 +35,7 @@ struct IRProgram;
 struct IRBB;
 struct IRStmt;
 struct IRPort;
+struct IRStorage;
 struct IRTimeVar;
 struct PipeSys;
 struct Pipe;
@@ -65,6 +66,7 @@ struct IRProgram {
 
     std::vector<std::unique_ptr<IRBB>> bbs;
     std::vector<std::unique_ptr<IRPort>> ports;
+    std::vector<std::unique_ptr<IRStorage>> storage;
     std::vector<std::unique_ptr<IRTimeVar>> timevars;
     std::map<std::string, IRTimeVar*> timevar_map;
 
@@ -245,10 +247,8 @@ struct IRStmt {
     bool has_constant;
     std::vector<IRBB*> targets;
     IRPort* port;
-    IRStmt* dom_killyounger;  // dominated by a killyounger?
+    IRStorage* storage;
     IRTimeVar* timevar;
-    IRStmt* restart_arg;  // backward arg to IRStmtRestartValueSrc on an IRStmtRestartValue op.
-    IRBB* restart_target;  // backward target to restart header on an IRStmtBackedge op.
     int time_offset;
     int width;
 
@@ -258,6 +258,9 @@ struct IRStmt {
     std::string port_name;
 
     // Filled in during lowering/timing:
+    IRStmt* dom_killyounger;  // dominated by a killyounger?
+    IRStmt* restart_arg;  // backward arg to IRStmtRestartValueSrc on an IRStmtRestartValue op.
+    IRBB* restart_target;  // backward target to restart header on an IRStmtBackedge op.
     Pipe* pipe;
     bool is_valid_start;
     Predicate<IRStmt*> valid_in_pred;
@@ -310,6 +313,20 @@ struct IRTimeVar {
     std::vector<IRStmt*> uses;
 };
 
+struct IRStorage {
+    IRStorage() {
+        data_width = 0;
+        index_width = 0;
+    }
+
+    std::string name;
+    int data_width;
+    int index_width;
+
+    std::vector<IRStmt*> writers;
+    std::vector<IRStmt*> readers;
+};
+
 // Helpers
 inline bool IRWritesPort(IRStmtType type) {
     return type == IRStmtPortWrite ||
@@ -318,6 +335,14 @@ inline bool IRWritesPort(IRStmtType type) {
 inline bool IRReadsPort(IRStmtType type) {
     return type == IRStmtPortRead ||
            type == IRStmtChanRead;
+}
+inline bool IRReadsStorage(IRStmtType type) {
+    return type == IRStmtRegRead ||
+           type == IRStmtArrayRead;
+}
+inline bool IRWritesStorage(IRStmtType type) {
+    return type == IRStmtRegWrite ||
+           type == IRStmtArrayWrite;
 }
 
 inline bool IRHasSideEffects(IRStmtType type) {

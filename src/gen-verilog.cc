@@ -73,6 +73,10 @@ void VerilogGenerator::Generate() {
         const auto* signal = p.first;
         GenerateStaging(signal);
     }
+    // Generate storage elements: registers and arrays.
+    for (auto& s : program_->storage) {
+        GenerateStorage(s.get());
+    }
     GenerateModuleEnd();
 }
 
@@ -171,6 +175,40 @@ void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
 
         case IRStmtPortExport:
             // Nothing.
+            break;
+
+        case IRStmtRegRead:
+            out_->SetVar("regname", stmt->storage->name);
+            out_->Print("assign $signal$ = reg_$regname$;\n");
+            break;
+
+        case IRStmtRegWrite:
+            out_->SetVar("regname", stmt->storage->name);
+            out_->SetVar("arg", arg_signals[0]);
+            out_->Print(
+                "always @(negedge clock) begin\n"
+                "    if (reset)\n"
+                "        reg_$regname$ <= 0;\n"
+                "    else if ($predicate$)\n"
+                "        reg_$regname$ <= $arg$;\n"
+                "end\n");
+            break;
+
+        case IRStmtArrayRead:
+            out_->SetVar("arrayname", stmt->storage->name);
+            out_->SetVar("index", arg_signals[0]);
+            out_->Print(
+                "assign $signal$ = array_$arrayname$[$index$];\n");
+            break;
+
+        case IRStmtArrayWrite:
+            out_->SetVar("arrayname", stmt->storage->name);
+            out_->SetVar("index", arg_signals[0]);
+            out_->SetVar("data", arg_signals[1]);
+            out_->Print(
+                "always @(negedge clock)\n"
+                "    if ($predicate$)\n"
+                "        array_$arrayname$[$index$] <= $data$;\n");
             break;
 
         case IRStmtRestartValue:
@@ -372,5 +410,19 @@ void VerilogGenerator::GenerateStaging(const IRStmt* stmt) {
                     "  .hold($hold$),\n"
                     "  .clock(clock),\n"
                     "  .reset(reset));\n");
+    }
+}
+
+void VerilogGenerator::GenerateStorage(const IRStorage* storage) {
+    PrinterScope scope(out_);
+    out_->SetVar("name", storage->name);
+    out_->SetVar("width", strprintf("%d", storage->data_width));
+    assert(storage->index_width < 64);  // checked during typecheck
+    out_->SetVar("entries", strprintf("%uld", (1UL << storage->index_width)));
+
+    if (storage->index_width == 0) {  // individual register
+        out_->Print("reg [$width$-1:0] reg_$name$;\n");
+    } else {  // array
+        out_->Print("reg [$width$-1:0] array_$name$[$entries$-1:0];\n");
     }
 }

@@ -512,8 +512,8 @@ bool IRProgram::Typecheck(ErrorCollector* collector) {
     for (auto& port : ports) {
         if (!DerivePortWidth(port.get(), collector)) return false;
     }
-    for (auto& storage : storage) {
-        if (!DeriveStorageSize(storage.get(), collector)) return false;
+    for (auto& s : storage) {
+        if (!DeriveStorageSize(s.get(), collector)) return false;
     }
     for (auto& bb : bbs) {
         if (!CheckBB(bb.get(), collector)) return false;

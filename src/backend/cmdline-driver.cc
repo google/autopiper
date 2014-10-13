@@ -66,7 +66,7 @@ CmdlineDriver::~CmdlineDriver() {
 }
 
 static const char* kUsage =
-    "Usage: autopiper [flags] <input>\n"
+    "Usage: autopiper-backend [flags] <input>\n"
     "    Flags:\n"
     "        -o <filename>:   specify the Verilog output filename (<input>.v by default).\n"
     "        --print-ir:      print IR as parsed, before transforms or lowering.\n"
@@ -76,7 +76,7 @@ static const char* kUsage =
     "        -v, --version:   print version and license information.\n";
 
 static const char* kVersion =
-    "autopiper version " CONFIG_VERSION ".\n"
+    "autopiper-backend version " CONFIG_VERSION ".\n"
     "\n"
     "autopiper is authored by Chris Fallin <cfallin@c1f.net>.\n"
     "\n"

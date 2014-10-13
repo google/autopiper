@@ -12,7 +12,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 
-(ns frontend.main
+(ns fe.main
   (:gen-class))
 
 (defn -main []

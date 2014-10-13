@@ -14,6 +14,8 @@
 
 (defproject autopiper-frontend "0.1"
   :description "Autopiper frontend"
-  :main frontend.main
+  :main fe.main
+  :source-paths ["@CMAKE_SOURCE_DIR@/src/frontend"] 
+  :uberjar-name "frontend.jar"
   :url "https://github.com/google/autopiper"
   :dependencies [[org.clojure/clojure "1.5.1"]])

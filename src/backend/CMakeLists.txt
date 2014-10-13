@@ -27,6 +27,6 @@ configure_file("build-config.h.in" "${PROJECT_BINARY_DIR}/build-config.h")
 include_directories(.)
 include_directories("${PROJECT_BINARY_DIR}")
 
-# Build the main compiler with the above sources.
-add_executable(autopiper ${SRCS})
-target_link_libraries(autopiper ${AUTOPIPER_LIBS})
+# Build the main compiler backend with the above sources.
+add_executable(autopiper-backend ${SRCS})
+target_link_libraries(autopiper-backend ${AUTOPIPER_LIBS})

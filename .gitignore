@@ -2,3 +2,7 @@ build/
 .*.swp
 *.pyc
 src/.*
+/target
+/classes
+*.jar
+*.class

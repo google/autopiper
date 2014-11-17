@@ -24,9 +24,9 @@
 #include <string>
 #include <iostream>
 
-#include "ir.h"
-#include "pipe.h"
-#include "gen-printer.h"
+#include "backend/ir.h"
+#include "backend/pipe.h"
+#include "backend/gen-printer.h"
 
 namespace autopiper {
 

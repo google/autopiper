@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "pipe.h"
-#include "ir.h"
+#include "backend/pipe.h"
+#include "backend/ir.h"
 
 #include <sstream>
 #include <iostream>

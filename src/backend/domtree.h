@@ -17,8 +17,8 @@
 #ifndef _AUTOPIPER_DOMTREE_H_
 #define _AUTOPIPER_DOMTREE_H_
 
-#include "ir.h"
-#include "rpo.h"
+#include "backend/ir.h"
+#include "backend/rpo.h"
 
 #include <map>
 #include <vector>

@@ -17,8 +17,8 @@
 #ifndef _AUTOPIPER_PIPE_TIMING_H_
 #define _AUTOPIPER_PIPE_TIMING_H_
 
-#include "ir.h"
-#include "pipe.h"
+#include "backend/ir.h"
+#include "backend/pipe.h"
 
 #include <vector>
 #include <memory>

@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#include "compiler.h"
-#include "ir.h"
-#include "pipe.h"
-#include "gen-verilog.h"
+#include "backend/compiler.h"
+#include "backend/ir.h"
+#include "backend/pipe.h"
+#include "backend/gen-verilog.h"
 
 #include <fstream>
 #include <memory>

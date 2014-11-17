@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#include "pipe.h"
-#include "ir.h"
-#include "compiler.h"
-#include "util.h"
-#include "rpo.h"
-#include "predicate.h"
-#include "ir-build.h"
-#include "pipe-timing.h"
+#include "backend/pipe.h"
+#include "backend/ir.h"
+#include "backend/compiler.h"
+#include "backend/util.h"
+#include "backend/rpo.h"
+#include "backend/predicate.h"
+#include "backend/ir-build.h"
+#include "backend/pipe-timing.h"
 
 #include <algorithm>
 #include <map>

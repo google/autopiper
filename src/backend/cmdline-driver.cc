@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "cmdline-driver.h"
-#include "util.h"
+#include "backend/cmdline-driver.h"
+#include "backend/util.h"
 #include "build-config.h"
 
 #include <string>
@@ -59,10 +59,10 @@ class CmdlineErrorCollector : public ErrorCollector {
 
 }
 
-CmdlineDriver::CmdlineDriver() {
+BackendCmdlineDriver::BackendCmdlineDriver() {
 }
 
-CmdlineDriver::~CmdlineDriver() {
+BackendCmdlineDriver::~BackendCmdlineDriver() {
 }
 
 static const char* kUsage =
@@ -98,7 +98,7 @@ static const char* kVersion =
     "developed independently by the author.\n"
     "\n";
 
-void CmdlineDriver::InterpretFlag(
+void BackendCmdlineDriver::InterpretFlag(
         const std::string& flag,
         const std::string& value,
         bool* consumed_value) {
@@ -121,7 +121,7 @@ void CmdlineDriver::InterpretFlag(
     }
 }
 
-void CmdlineDriver::ParseArgs(int argc, const char* const* argv) {
+void BackendCmdlineDriver::ParseArgs(int argc, const char* const* argv) {
     // Look for flags.
     while (argc >= 1) {
         string flag = argv[0];
@@ -153,7 +153,7 @@ void CmdlineDriver::ParseArgs(int argc, const char* const* argv) {
     }
 }
 
-void CmdlineDriver::Execute() {
+void BackendCmdlineDriver::Execute() {
     CmdlineErrorCollector collector(&std::cerr);
     if (!compiler_.CompileFile(file_, output_, options_, &collector)) {
         throw autopiper::Exception("Compilation failed.");

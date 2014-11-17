@@ -17,7 +17,7 @@
 #ifndef _AUTOPIPER_IR_BUILD_H_
 #define _AUTOPIPER_IR_BUILD_H_
 
-#include "ir.h"
+#include "backend/ir.h"
 
 namespace autopiper {
 

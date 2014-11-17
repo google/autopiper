@@ -17,7 +17,7 @@
 #ifndef _AUTOPIPER_RPO_H_
 #define _AUTOPIPER_RPO_H_
 
-#include "ir.h"
+#include "backend/ir.h"
 
 #include <vector>
 #include <set>

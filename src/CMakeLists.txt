@@ -1,8 +1,27 @@
-set(SRCS main.cc cmdline-driver.cc
-         ir.cc ir-parser.cc ir-crosslinker.cc ir-typechecker.cc
-         pipe.cc lower.cc pipe-timing.cc
-         gen-verilog.cc gen-printer.cc
-         compiler.cc)
+set(BACKEND_SRCS
+    backend/ir.cc
+    backend/ir-parser.cc
+    backend/ir-crosslinker.cc
+    backend/ir-typechecker.cc
+    backend/pipe.cc
+    backend/lower.cc
+    backend/pipe-timing.cc
+    backend/gen-verilog.cc
+    backend/gen-printer.cc
+    backend/compiler.cc
+    backend/cmdline-driver.cc)
+
+set(BACKEND_DRIVER
+    backend/main.cc)
+
+set(FRONTEND_SRCS
+    frontend/parser.cc
+    frontend/ast.cc
+    frontend/codegen.cc
+    frontend/cmdline-driver.cc)
+
+set(FRONTEND_DRIVER
+    frontend/main.cc)
 
 # Optionally build a statically-linked executable. This comes first so that
 # static versions of third-party libraries are found below.
@@ -25,8 +44,19 @@ configure_file("build-config.h.in" "${PROJECT_BINARY_DIR}/build-config.h")
 # Set the incldue path so that project-local includes and config header
 # includes work.
 include_directories(.)
+include_directories(backend)
+include_directories(frontend)
 include_directories("${PROJECT_BINARY_DIR}")
 
+# Build the backend sources into a library to share between backend and
+# frontend command-line binaries.
+add_library(backend STATIC ${BACKEND_SRCS})
+
 # Build the main compiler backend with the above sources.
-add_executable(autopiper-backend ${SRCS})
+add_executable(autopiper-backend ${BACKEND_DRIVER})
+target_link_libraries(autopiper-backend backend)
 target_link_libraries(autopiper-backend ${AUTOPIPER_LIBS})
+
+add_executable(autopiper ${FRONTEND_SRCS} ${FRONTEND_DRIVER})
+target_link_libraries(autopiper backend)
+target_link_libraries(autopiper ${AUTOPIPER_LIBS})

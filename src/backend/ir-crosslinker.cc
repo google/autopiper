@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "ir.h"
-#include "compiler.h"
-#include "util.h"
+#include "backend/ir.h"
+#include "backend/compiler.h"
+#include "backend/util.h"
 
 #include <map>
 #include <vector>

@@ -1,0 +1,17 @@
+- flesh out AST enough to parse sample program
+- pass to link up variable refs to their definitions
+- pass to link up type uses to their defs (and include builtin types and a way
+  to define arbitrary-width integers)
+- width-inferencing and typechecking pass
+- call inlining pass
+- codegen visitor pass
+- support for structs
+- support for all IR-supported primitives:
+  - valid_if, kill, killyounger
+  - ports and chans
+  - timing constraints
+- support for "macros" in C++ (as codegen visitor pass hooks)
+- transactional state macros
+- conditional/blocking port hooks
+- support for macros in some other language (Lua? Figure out a way to wrap the
+  codegen API and the AST-with-pass-annotations nicely)

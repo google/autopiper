@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "gen-printer.h"
+#include "backend/gen-printer.h"
 
 #include <assert.h>
 

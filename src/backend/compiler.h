@@ -17,35 +17,13 @@
 #ifndef _AUTOPIPER_COMPILER_H_
 #define _AUTOPIPER_COMPILER_H_
 
-#include "ir.h"
+#include "backend/ir.h"
+#include "common/parser-utils.h"
 
 #include <boost/noncopyable.hpp>
 #include <string>
 
 namespace autopiper {
-
-class ErrorCollector : public boost::noncopyable {
-    public:
-        enum Level {
-            ERROR,
-            WARNING,
-            INFO,
-        };
-
-        virtual void ReportError(Location loc, Level level, const std::string& message) = 0;
-
-        virtual bool HasErrors() const = 0;
-};
-
-struct CompilerOptions {
-    bool print_ir;
-    bool print_lowered;
-
-    CompilerOptions()
-        : print_ir(false)
-        , print_lowered(false)
-    {}
-};
 
 class Compiler : public boost::noncopyable {
     public:

@@ -9,4 +9,4 @@ set(CMAKE_CXX_FLAGS "-Wall -Werror -std=c++11 -Wno-sign-compare")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
-add_subdirectory(src/backend)
+add_subdirectory(src)

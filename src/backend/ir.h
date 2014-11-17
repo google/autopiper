@@ -23,11 +23,10 @@
 #include <sstream>
 #include <boost/multiprecision/gmp.hpp>
 
-#include "predicate.h"
+#include "backend/predicate.h"
+#include "common/parser-utils.h"  // Location, ErrorCollector
 
 namespace autopiper {
-
-class ErrorCollector;  // compiler.h
 
 typedef boost::multiprecision::mpz_int bignum;
 
@@ -40,23 +39,6 @@ struct IRTimeVar;
 struct PipeSys;
 struct Pipe;
 struct PipeStage;
-
-struct Location {
-    std::string filename;
-    int line, column;
-
-    Location() {
-        filename = "(none)";
-        line = 0;
-        column = 0;
-    }
-
-    std::string ToString() const {
-        std::ostringstream os;
-        os << filename << ":" << line << ":" << column;
-        return os.str();
-    }
-};
 
 struct IRProgram {
     IRProgram() {

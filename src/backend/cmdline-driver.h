@@ -17,18 +17,18 @@
 #ifndef _AUTOPIPER_CMDLINE_DRIVER_H_
 #define _AUTOPIPER_CMDLINE_DRIVER_H_
 
-#include "exception.h"
-#include "compiler.h"
+#include "backend/exception.h"
+#include "backend/compiler.h"
 
 #include <string>
 #include <boost/noncopyable.hpp>
 
 namespace autopiper {
 
-class CmdlineDriver : public boost::noncopyable {
+class BackendCmdlineDriver : public boost::noncopyable {
     public:
-        CmdlineDriver();
-        ~CmdlineDriver();
+        BackendCmdlineDriver();
+        ~BackendCmdlineDriver();
 
         void ParseArgs(int argc, const char* const* argv);
         void Execute();

@@ -24,9 +24,9 @@
 #include <string>
 #include <stack>
 
-#include "ir.h"
-#include "rpo.h"
-#include "util.h"
+#include "backend/ir.h"
+#include "backend/rpo.h"
+#include "backend/util.h"
 
 namespace autopiper {
 

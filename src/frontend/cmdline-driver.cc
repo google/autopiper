@@ -13,23 +13,3 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#include "backend/cmdline-driver.h"
-
-#include <iostream>
-#include <memory>
-
-using namespace std;
-
-int main(int argc, const char* const* argv) {
-    unique_ptr<autopiper::BackendCmdlineDriver> driver(
-            new autopiper::BackendCmdlineDriver());
-    try {
-        driver->ParseArgs(argc - 1, argv + 1);
-        driver->Execute();
-        return 0;
-    } catch (autopiper::Exception& e) {
-        cerr << "Error: " << e.what() << endl;
-        return 1;
-    }
-}

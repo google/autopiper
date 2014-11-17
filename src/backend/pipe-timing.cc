@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "pipe-timing.h"
-#include "timing-dag.h"
-#include "compiler.h"
+#include "backend/pipe-timing.h"
+#include "backend/timing-dag.h"
+#include "backend/compiler.h"
 
 #include <vector>
 #include <map>

@@ -32,6 +32,9 @@ using ASTVector = std::vector<std::unique_ptr<T>>;
 template<typename T>
 using ASTRef = std::unique_ptr<T>;
 
+template<typename T>
+ASTRef<T> astnull() { return std::unique_ptr<T>(nullptr); }
+
 typedef Token::bignum ASTBignum;
 
 struct AST;
@@ -178,16 +181,26 @@ struct ASTExpr {
         AND,
         OR,
         NOT,
+        XOR,
         LSH,
         RSH,
+        SEL,
         BITSLICE,
         CONCAT,
+
+        EQ,
+        NE,
+        LE,
+        LT,
+        GE,
+        GT,
 
         VAR,
         CONST,
 
-        PORTREAD,
+        FUNCCALL,
 
+        PORTREAD,
         PORTDEF,
     };
 
@@ -198,6 +211,11 @@ struct ASTExpr {
     ASTBignum constant;
 
     ASTRef<ASTType> type;  // inferred; not from parser
+
+    ASTExpr() : op(CONST)  {}
+    ASTExpr(ASTBignum constant_)
+        : op(CONST), constant(constant_)
+    {}
 };
 
 }  // namespace frontend

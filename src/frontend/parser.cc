@@ -17,6 +17,8 @@
 #include "frontend/ast.h"
 #include "frontend/parser.h"
 
+using namespace std;
+
 // TODO: make this a little nicer with some parser combinator-like helpers.
 // Each term function should return a unique_ptr of its parse node or failure.
 // We should have an easy helper (macro) to call a term function and place the
@@ -252,8 +254,8 @@ bool Parser::ParseStmtLet(ASTStmtLet* let) {
         return false;
     }
 
-    let->rhs.reset(new ASTExpr());
-    if (!ParseExpr(let->rhs.get())) {
+    let->rhs = ParseExpr();
+    if (!let->rhs) {
         return false;
     }
 
@@ -270,8 +272,8 @@ bool Parser::ParseStmtAssign(ASTStmtAssign* assign) {
         return false;
     }
 
-    assign->rhs.reset(new ASTExpr());
-    if (!ParseExpr(assign->rhs.get())) {
+    assign->rhs = ParseExpr();
+    if (!assign->rhs) {
         return false;
     }
 
@@ -282,8 +284,8 @@ bool Parser::ParseStmtIf(ASTStmtIf* if_) {
     if (!Consume(Token::LPAREN)) {
         return false;
     }
-    if_->condition.reset(new ASTExpr());
-    if (!ParseExpr(if_->condition.get())) {
+    if_->condition = ParseExpr();
+    if (!if_->condition) {
         return false;
     }
     if (!Consume(Token::RPAREN)) {
@@ -308,8 +310,8 @@ bool Parser::ParseStmtWhile(ASTStmtWhile* while_) {
     if (!Consume(Token::LPAREN)) {
         return false;
     }
-    while_->condition.reset(new ASTExpr());
-    if (!ParseExpr(while_->condition.get())) {
+    while_->condition = ParseExpr();
+    if (!while_->condition) {
         return false;
     }
     if (!Consume(Token::RPAREN)) {
@@ -335,8 +337,8 @@ bool Parser::ParseStmtWrite(ASTStmtWrite* write) {
     if (!ParseIdent(write->port.get())) {
         return false;
     }
-    write->rhs.reset(new ASTExpr());
-    if (!ParseExpr(write->rhs.get())) {
+    write->rhs = ParseExpr();
+    if (!write->rhs) {
         return false;
     }
     return Consume(Token::SEMICOLON);
@@ -347,42 +349,184 @@ bool Parser::ParseStmtSpawn(ASTStmtSpawn* spawn) {
     return ParseStmt(spawn->body.get());
 }
 
-bool Parser::ParseExpr(ASTExpr* expr) {
-    // Supported:
-    // - Arithmetic infix and prefix operators
-    // - Variable references, type field references, array slot references
-    // - port reads ('read' expressions)
-    // - port type objects ('port' expressions, with or without port name)
-    //
-    // We use a basic shunting-yard algorithm here:
-    // - Keep a stack of subexpressions.
-    // - Keep a stack of operators.
-    // - When we encounter (i) a unary operator or (b) an atom (left paren,
-    //   variable reference, port read, ...) then we push this onto the stack of
-    //   subexpressions.
-    // - When we encounter an operator:
-    //   - If the operator has higher precedence than the top-of-stack operator
-    //     (or the operator stack is empty), we push the operator on the stack.
-    //   - If the operator has equal or lower precedence than the top-of-stack
-    //     operator, pop the top-of-stack operator and two operands from the
-    //     subexpression (operand) stack, combine, and push the result on the
-    //     subexpression stack.
-    // - When we encounter the end of the expression (right paren, any other
-    //   unrecognized token), we reduce remaining operators on the operator
-    //   stack.
-    // - There should be only one expression left on the subexpression stack.
-    //   If more or less than one, error. Return that expression if no error.
-    
-    if (TryExpect(Token::IDENT) && CurToken().s == "read") {
-        Consume();
-        expr->op = ASTExpr::PORTREAD;
-        expr->ident.reset(new ASTIdent());
-        if (!ParseIdent(expr->ident.get())) {
-            return false;
+ASTRef<ASTExpr> Parser::ParseExpr() {
+    return ParseExprGroup1();
+}
+
+// Group 1: ternary op
+ASTRef<ASTExpr> Parser::ParseExprGroup1() {
+    auto expr = ParseExprGroup2();
+    if (TryConsume(Token::QUESTION)) {
+        auto op1 = ParseExprGroup2();
+        if (!Consume(Token::COLON)) {
+            return astnull<ASTExpr>();
         }
+        auto op2 = ParseExprGroup1();
+        ASTRef<ASTExpr> ret(new ASTExpr());
+        ret->op = ASTExpr::SEL;
+        ret->ops.push_back(move(expr));
+        ret->ops.push_back(move(op1));
+        ret->ops.push_back(move(op2));
+        return ret;
+    }
+    return expr;
+}
+
+// This is a little hacky. We're abstracting out the left-associative
+// recursive-descent logic, and we want to take a template argument for the
+// next-lower nonterminal (precedence group). We actually take a member
+// function pointer, but devirtualization *should* reduce this down to a direct
+// function call given sufficient optimization settings.
+template<
+    Parser::ExprGroupParser this_level,
+    Parser::ExprGroupParser next_level,
+    typename ...Args>
+ASTRef<ASTExpr> Parser::ParseLeftAssocBinops(Args&&... args) {
+  ASTRef<ASTExpr> ret = (this->*next_level)();
+  ASTRef<ASTExpr> op_node(new ASTExpr());
+  op_node->ops.push_back(move(ret));
+  if (ParseLeftAssocBinopsRHS<this_level, next_level>(
+      op_node.get(), args...)) {
+    return op_node;
+  } else {
+    ret = move(op_node->ops[0]);
+    return ret;
+  }
+}
+
+template<
+    Parser::ExprGroupParser this_level,
+    Parser::ExprGroupParser next_level,
+    typename ...Args>
+bool Parser::ParseLeftAssocBinopsRHS(ASTExpr* expr,
+                                     Token::Type op_token,
+                                     ASTExpr::Op op,
+                                     Args&&... args) {
+  if (TryExpect(op_token)) {
+    Consume();
+    auto rhs = (this->*this_level)();
+    if (!rhs) {
+      return false;
+    }
+    expr->op = op;
+    expr->ops.push_back(move(rhs));
+    return true;
+  }
+  return ParseLeftAssocBinopsRHS<this_level, next_level>(expr, args...);
+}
+
+template<
+    Parser::ExprGroupParser this_level,
+    Parser::ExprGroupParser next_level>
+bool Parser::ParseLeftAssocBinopsRHS(ASTExpr* expr) {
+  return false;
+}
+
+// Group 2: logical bitwise or
+ASTRef<ASTExpr> Parser::ParseExprGroup2() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup2,
+      &Parser::ParseExprGroup3>(
+            Token::PIPE, ASTExpr::OR);
+}
+
+// Group 3: logical bitwise xor
+ASTRef<ASTExpr> Parser::ParseExprGroup3() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup3,
+      &Parser::ParseExprGroup4>(
+            Token::CARET, ASTExpr::XOR);
+}
+
+// Group 4: logical bitwise and
+ASTRef<ASTExpr> Parser::ParseExprGroup4() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup4,
+      &Parser::ParseExprGroup5>(
+            Token::AMPERSAND, ASTExpr::AND);
+}
+
+// Group 5: equality operators
+ASTRef<ASTExpr> Parser::ParseExprGroup5() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup5,
+      &Parser::ParseExprGroup6>(
+            Token::DOUBLE_EQUAL, ASTExpr::EQ,
+            Token::NOT_EQUAL, ASTExpr::NE);
+}
+
+// Group 6: comparison operators
+ASTRef<ASTExpr> Parser::ParseExprGroup6() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup6,
+      &Parser::ParseExprGroup7>(
+            Token::LANGLE, ASTExpr::LT,
+            Token::RANGLE, ASTExpr::GT,
+            Token::LESS_EQUAL, ASTExpr::LE,
+            Token::GREATER_EQUAL, ASTExpr::GE);
+}
+
+// Group 7: bitshift operators
+ASTRef<ASTExpr> Parser::ParseExprGroup7() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup7,
+      &Parser::ParseExprGroup8>(
+            Token::LSH, ASTExpr::LSH,
+            Token::RSH, ASTExpr::RSH);
+}
+
+// Group 8: add/sub
+ASTRef<ASTExpr> Parser::ParseExprGroup8() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup8,
+      &Parser::ParseExprGroup9>(
+            Token::PLUS, ASTExpr::ADD,
+            Token::DASH, ASTExpr::SUB);
+}
+
+// Group 9: mul/div/rem
+ASTRef<ASTExpr> Parser::ParseExprGroup9() {
+  return ParseLeftAssocBinops<
+      &Parser::ParseExprGroup9,
+      &Parser::ParseExprGroup10>(
+            Token::STAR, ASTExpr::MUL,
+            Token::SLASH, ASTExpr::DIV,
+            Token::PERCENT, ASTExpr::REM);
+}
+
+// Group 10: unary ops (~, unary +, unary -)
+ASTRef<ASTExpr> Parser::ParseExprGroup10() {
+    return astnull<ASTExpr>();
+}
+
+// Group 11: array subscripting ([]), field dereferencing (.), function calls
+ASTRef<ASTExpr> Parser::ParseExprGroup11() {
+    return astnull<ASTExpr>();
+}
+
+// Atoms/terminals: identifiers, literals
+ASTRef<ASTExpr> Parser::ParseExprAtom() {
+    // Identifier: either a variable reference, a function call, or a port
+    // read.
+    if (TryExpect(Token::IDENT)) {
+        const string& ident = CurToken().s;
+
+        if (ident == "read") {
+            ASTRef<ASTExpr> ret(new ASTExpr());
+            ret->op = ASTExpr::PORTREAD;
+            ret->ident.reset(new ASTIdent());
+            if (!ParseIdent(ret->ident.get())) {
+                return astnull<ASTExpr>();
+            }
+            return ret;
+        }
+
+        // Otherwise, either a variable reference or a function call.
+        // Consume the identifier and check whether a parenthesis follows.
+        Consume();
     }
 
-    return false;
+    return astnull<ASTExpr>();
 }
 
 }  // namespace frontend

@@ -56,7 +56,42 @@ class Parser : public ParserBase {
         bool ParseStmtWrite(ASTStmtWrite* write);
         bool ParseStmtSpawn(ASTStmtSpawn* spawn);
 
-        bool ParseExpr(ASTExpr* expr);
+        ASTRef<ASTExpr>  ParseExpr();
+        ASTRef<ASTExpr>  ParseExprGroup1();   // group 1:  ternary op  (?:)
+        ASTRef<ASTExpr>  ParseExprGroup2();   // group 2:  logical bitwise or  (|)
+        ASTRef<ASTExpr>  ParseExprGroup3();   // group 3:  logical bitwise xor (^)
+        ASTRef<ASTExpr>  ParseExprGroup4();   // group 4:  logical bitwise and (&)
+        ASTRef<ASTExpr>  ParseExprGroup5();   // group 5:  equality operators (==, !=)
+        ASTRef<ASTExpr>  ParseExprGroup6();   // group 6:  comparison operators (<, <=, >, >=)
+        ASTRef<ASTExpr>  ParseExprGroup7();   // group 7:  bitshift operators (<<, >>)
+        ASTRef<ASTExpr>  ParseExprGroup8();   // group 8:  add/sub (+, -)
+        ASTRef<ASTExpr>  ParseExprGroup9();   // group 9:  mul/div/rem (*, /, %)
+        ASTRef<ASTExpr>  ParseExprGroup10();  // group 10: unary ops (~, unary +, unary -)
+        ASTRef<ASTExpr>  ParseExprGroup11();  // group 11: array subscripting ([]), field dereferencing (.), function calls (())
+        ASTRef<ASTExpr>  ParseExprAtom();     // terminals: identifiers, literals
+
+        // Helper: left-associative binary op parse.
+        typedef ASTRef<ASTExpr> (Parser::*ExprGroupParser)();
+        template<
+            ExprGroupParser this_level,
+            ExprGroupParser next_level,
+            typename ...Args>
+        ASTRef<ASTExpr> ParseLeftAssocBinops(Args&&... args);
+
+        // Helpers to ParseLeftAssocBinops impl: these implement a first/rest
+        // pattern to, at compile time, build a parse function that handles all
+        // ops at this precedence level.
+        template<
+            ExprGroupParser this_level,
+            ExprGroupParser next_level,
+            typename ...Args>
+        bool ParseLeftAssocBinopsRHS(ASTExpr* expr,
+                Token::Type op_token, ASTExpr::Op op, Args&&... args);
+
+        template<
+            ExprGroupParser this_level,
+            ExprGroupParser next_level>
+        bool ParseLeftAssocBinopsRHS(ASTExpr* expr);
 };
 
 }  // namespace frontend

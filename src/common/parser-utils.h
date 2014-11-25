@@ -165,6 +165,14 @@ struct Token {
         TICK,
         BACKTICK,
 
+        // Compound punctuation
+        DOUBLE_EQUAL,  // ==
+        NOT_EQUAL,     // !=
+        LESS_EQUAL,    // <=
+        GREATER_EQUAL, // >=
+        LSH,           // <<
+        RSH,           // >>
+
         NEWLINE,
         EOFTOKEN,
     } type;
@@ -234,6 +242,13 @@ struct Token {
             S(TILDE);
             S(TICK);
             S(BACKTICK);
+
+            S(DOUBLE_EQUAL);
+            S(NOT_EQUAL);
+            S(LESS_EQUAL);
+            S(GREATER_EQUAL);
+            S(LSH);
+            S(RSH);
 
             S(NEWLINE);
             S(EOFTOKEN);
@@ -340,9 +355,6 @@ class Lexer {
                         P(RBRACKET, ']');
                         P(LBRACE, '{');
                         P(RBRACE, '}');
-                        P(LANGLE, '<');
-                        P(RANGLE, '>');
-                        P(BANG, '!');
                         P(AT, '@');
                         // no HASH -- interpreted as start of comment
                         P(DOLLAR, '$');
@@ -350,7 +362,6 @@ class Lexer {
                         P(CARET, '^');
                         P(AMPERSAND, '&');
                         P(STAR, '*');
-                        P(EQUALS, '=');
                         P(PLUS, '+');
                         P(DASH, '-');
                         P(PIPE, '|');
@@ -364,6 +375,57 @@ class Lexer {
                         P(TILDE, '~');
                         P(TICK, '\'');
                         P(BACKTICK, '`');
+
+                        // Compound punctuation: handled specially here by
+                        // consuming and peeking at the next char.
+                        if (c == '=') {
+                          stream_.ReadNext();
+                          if (stream_.Have() && c == '=') {
+                            stream_.ReadNext();
+                            Emit(line, col, Token::DOUBLE_EQUAL);
+                          } else {
+                            Emit(line, col, Token::EQUALS);
+                          }
+                          continue;
+                        }
+                        if (c == '!') {
+                          stream_.ReadNext();
+                          if (stream_.Have() && c == '=') {
+                            stream_.ReadNext();
+                            Emit(line, col, Token::NOT_EQUAL);
+                          } else {
+                            Emit(line, col, Token::BANG);
+                          }
+                          continue;
+                        }
+                        if (c == '<') {
+                          stream_.ReadNext();
+                          if (stream_.Have() && c == '=') {
+                            stream_.ReadNext();
+                            Emit(line, col, Token::LESS_EQUAL);
+                          } else if (stream_.Have() && c == '<') {
+                            stream_.ReadNext();
+                            Emit(line, col, Token::LSH);
+                          } else {
+                            Emit(line, col, Token::LANGLE);
+                          }
+                          continue;
+                        }
+                        if (c == '>') {
+                          stream_.ReadNext();
+                          if (stream_.Have() && c == '=') {
+                            stream_.ReadNext();
+                            Emit(line, col, Token::GREATER_EQUAL);
+                            continue;
+                          } else if (stream_.Have() && c == '>') {
+                            stream_.ReadNext();
+                            Emit(line, col, Token::RSH);
+                            continue;
+                          } else {
+                            Emit(line, col, Token::RANGLE);
+                            continue;
+                          }
+                        }
 
                         stream_.ReadNext();
                         continue;

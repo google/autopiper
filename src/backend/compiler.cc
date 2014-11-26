@@ -26,30 +26,33 @@ using namespace std;
 
 namespace autopiper {
 
-Compiler::Compiler() {
-}
+bool BackendCompiler::CompileFile(
+        const Options& options,
+        ErrorCollector* collector) {
+    unique_ptr<IRProgram> parsed_prog;
+    IRProgram* prog = nullptr;
 
-Compiler::~Compiler() {
-}
+    if (options.input_ir) {
+        prog = options.input_ir;
+    } else {
+        ifstream in(options.filename);
+        if (!in.good()) {
+            Location loc;
+            loc.filename = options.filename;
+            loc.line = loc.column = 0;
+            collector->ReportError(loc, ErrorCollector::ERROR,
+                                   string("Could not open file '") +
+                                   options.filename +
+                                   string("'"));
+            return false;
+        }
 
-bool Compiler::CompileFile(const string& filename,
-                           const string& output,
-                           const CompilerOptions& options,
-                           ErrorCollector* collector) {
-    ifstream in(filename);
-    if (!in.good()) {
-        Location loc;
-        loc.filename = filename;
-        loc.line = loc.column = 0;
-        collector->ReportError(loc, ErrorCollector::ERROR,
-                               string("Could not open file '") + filename +
-                               string("'"));
-        return false;
+        parsed_prog = IRProgram::Parse(options.filename, &in, collector);
+        prog = parsed_prog.get();
+        in.close();
+        if (!prog) return false;
     }
 
-    unique_ptr<IRProgram> prog = IRProgram::Parse(filename, &in, collector);
-    in.close();
-    if (!prog) return false;
     if (!prog->Crosslink(collector)) return false;
     if (!prog->Typecheck(collector)) return false;
 
@@ -71,13 +74,14 @@ bool Compiler::CompileFile(const string& filename,
         }
     }
 
-    ofstream out(output);
+    ofstream out(options.output);
     if (!out.good()) {
         Location loc;
-        loc.filename = output;
+        loc.filename = options.output;
         loc.line = loc.column = 0;
         collector->ReportError(loc, ErrorCollector::ERROR,
-                               string("Could not open file '") + filename +
+                               string("Could not open file '") +
+                               options.output +
                                string("'"));
     }
     Printer out_printer(&out);

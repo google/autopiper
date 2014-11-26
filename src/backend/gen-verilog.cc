@@ -17,7 +17,7 @@
 #include "backend/gen-verilog.h"
 #include "backend/ir.h"
 #include "backend/pipe.h"
-#include "backend/util.h"
+#include "common/util.h"
 
 #include <iostream>
 #include <sstream>

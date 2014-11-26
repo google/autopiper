@@ -14,37 +14,34 @@
  * limitations under the License.
  */
 
-#ifndef _AUTOPIPER_CMDLINE_DRIVER_H_
-#define _AUTOPIPER_CMDLINE_DRIVER_H_
+#ifndef _AUTOPIPER_FRONTEND_CMDLINE_DRIVER_H_
+#define _AUTOPIPER_FRONTEND_CMDLINE_DRIVER_H_
 
-#include "common/exception.h"
+#include "frontend/compiler.h"
 #include "backend/compiler.h"
 
 #include <string>
 #include <boost/noncopyable.hpp>
 
 namespace autopiper {
+namespace frontend {
 
-class BackendFlags;
+class FrontendFlags;
 
-class BackendCmdlineDriver : public boost::noncopyable {
+class FrontendCmdlineDriver : public boost::noncopyable {
     public:
-        BackendCmdlineDriver() { }
-        ~BackendCmdlineDriver() { }
+        FrontendCmdlineDriver() { }
+        ~FrontendCmdlineDriver() { }
 
         void ParseArgs(int argc, const char* const* argv);
         void Execute();
 
     private:
-        friend class BackendFlags;
-        BackendCompiler::Options options_;
-
-        void InterpretFlag(
-                const std::string& flag,
-                const std::string& value,
-                bool* consumed_value);
+        friend class FrontendFlags;
+        autopiper::frontend::Compiler::Options options_;
 };
 
+}  // namespace frontend
 }  // namespace autopiper
 
-#endif
+#endif  // _AUTOPIPER_FRONTEND_CMDLINE_DRIVER_H_

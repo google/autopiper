@@ -56,16 +56,6 @@ class ErrorCollector {
         virtual bool HasErrors() const = 0;
 };
 
-struct CompilerOptions {
-    bool print_ir;
-    bool print_lowered;
-
-    CompilerOptions()
-        : print_ir(false)
-        , print_lowered(false)
-    {}
-};
-
 class PeekableStream {
     public:
         PeekableStream(std::istream* in)

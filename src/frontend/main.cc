@@ -14,6 +14,21 @@
  * limitations under the License.
  */
 
+#include "frontend/cmdline-driver.h"
+#include "common/exception.h"
+
+#include <iostream>
+
+using namespace std;
+
 int main(int argc, const char* const* argv) {
-    return 0;
+    autopiper::frontend::FrontendCmdlineDriver driver;
+    try {
+        driver.ParseArgs(argc - 1, argv + 1);
+        driver.Execute();
+        return 0;
+    } catch (autopiper::Exception& e) {
+        cerr << "Error: " << e.what() << endl;
+        return 1;
+    }
 }

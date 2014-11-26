@@ -14,47 +14,53 @@
  * limitations under the License.
  */
 
-#ifndef _AUTOPIPER_COMPILER_H_
-#define _AUTOPIPER_COMPILER_H_
+#ifndef _AUTOPIPER_FRONTEND_COMPILER_H_
+#define _AUTOPIPER_FRONTEND_COMPILER_H_
 
-#include "backend/ir.h"
-#include "common/parser-utils.h"
+#include "common/error-collector.h"
 
-#include <boost/noncopyable.hpp>
 #include <string>
-#include <memory>
+#include <boost/noncopyable.hpp>
 
 namespace autopiper {
+namespace frontend {
 
-class BackendCompiler : public boost::noncopyable {
+class Compiler : public boost::noncopyable {
     public:
-        BackendCompiler() { }
-        ~BackendCompiler() { }
+        Compiler() { }
+        ~Compiler() { }
 
         struct Options {
-            // Specify exactly one of input_ir or filename (a text IR file).
-            IRProgram* input_ir;
+            // Print AST before doing codegen.
+            bool print_ast;
+
+            // Print IR after frontend codegen.
+            bool print_ir;
+
+            // Print lowered form after pipelining.
+            bool print_lowered;
+
+            // Autopiper input.
             std::string filename;
+
+            // IR output.
+            std::string ir_output;
 
             // Verilog output.
             std::string output;
 
-            // Print IR before transforming in the backend.
-            bool print_ir;
-
-            // Print lowered pipeline form before generating Verilog.
-            bool print_lowered;
-
             Options()
-                : print_ir(false)
+                : print_ast(false)
+                , print_ir(false)
                 , print_lowered(false)
-            {}
+            { }
         };
 
         bool CompileFile(const Options& options,
                          ErrorCollector* collector);
 };
 
+}  // namespace frontend
 }  // namespace autopiper
 
-#endif
+#endif  // _AUTOPIPER_FRONTEND_COMPILER_H_

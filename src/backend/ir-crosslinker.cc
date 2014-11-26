@@ -16,7 +16,7 @@
 
 #include "backend/ir.h"
 #include "backend/compiler.h"
-#include "backend/util.h"
+#include "common/util.h"
 
 #include <map>
 #include <vector>

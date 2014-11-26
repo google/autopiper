@@ -15,7 +15,10 @@
  */
 
 #include "backend/cmdline-driver.h"
-#include "backend/util.h"
+#include "common/util.h"
+#include "common/error-collector.h"
+#include "common/parse-args.h"
+#include "common/exception.h"
 #include "build-config.h"
 
 #include <string>
@@ -24,46 +27,6 @@
 using namespace std;
 
 namespace autopiper {
-
-namespace {
-
-class CmdlineErrorCollector : public ErrorCollector {
-    public:
-        CmdlineErrorCollector(std::ostream* output)
-            : output_(output), has_errors_(false) {}
-
-        virtual void ReportError(Location loc,
-                                 Level level,
-                                 const std::string& message) {
-            switch (level) {
-                case ERROR:
-                    (*output_) << "Error: ";
-                    has_errors_ = true;
-                    break;
-                case WARNING:
-                    (*output_) << "Warning: ";
-                    break;
-                case INFO:
-                    (*output_) << "Info: ";
-                    break;
-            }
-            (*output_) << loc.filename << ":" << loc.line << ":" << loc.column << ": ";
-            (*output_) << message << endl;
-        }
-
-        virtual bool HasErrors() const { return has_errors_; }
-    private:
-        std::ostream* output_;
-        bool has_errors_;
-};
-
-}
-
-BackendCmdlineDriver::BackendCmdlineDriver() {
-}
-
-BackendCmdlineDriver::~BackendCmdlineDriver() {
-}
 
 static const char* kUsage =
     "Usage: autopiper-backend [flags] <input>\n"
@@ -98,64 +61,61 @@ static const char* kVersion =
     "developed independently by the author.\n"
     "\n";
 
-void BackendCmdlineDriver::InterpretFlag(
-        const std::string& flag,
-        const std::string& value,
-        bool* consumed_value) {
-    if (flag == "--print-ir") {
-        options_.print_ir = true;
-    } else if (flag == "--print-lowered") {
-        options_.print_lowered = true;
-    } else if (flag == "-o") {
-        output_ = value;
-        *consumed_value = true;
-    } else if (flag == "-h" || flag == "--help") {
-        cerr << kUsage;
-        throw autopiper::Exception("No compilation performed.");
-    } else if (flag == "-v" || flag == "--version") {
-        cerr << kVersion;
-        throw autopiper::Exception("No compilation performed.");
-    } else {
-        throw autopiper::Exception(
-                strprintf("Invalid flag: %s. Use -h for help.", flag.c_str()));
-    }
-}
+class BackendFlags : public CmdlineParser {
+    public:
+        BackendFlags(BackendCmdlineDriver* driver,
+                int argc, const char* const* argv)
+            : CmdlineParser(argc, argv), driver_(driver)
+        { }
+
+    protected:
+        virtual FlagHandlerResult HandleFlag(
+                const string& flag, bool have_value, const string& value) {
+            if (flag == "--print-ir") {
+                driver_->options_.print_ir = true;
+                return FLAG_CONSUMED_KEY;
+            } else if (flag == "--print-lowered") {
+                driver_->options_.print_lowered = true;
+                return FLAG_CONSUMED_KEY;
+            } else if (flag == "-o") {
+                driver_->options_.output = value;
+                return FLAG_CONSUMED_KEY_VALUE;
+            } else if (flag == "-h" || flag == "--help") {
+                cerr << kUsage;
+                throw autopiper::Exception("No compilation performed.");
+            } else if (flag == "-v" || flag == "--version") {
+                cerr << kVersion;
+                throw autopiper::Exception("No compilation performed.");
+            } else {
+                return FLAG_BAD;
+            }
+        }
+
+        virtual ArgHandlerResult HandleArg(
+                const string& arg) {
+            if (driver_->options_.filename.empty()) {
+                driver_->options_.filename = arg;
+                if (driver_->options_.output.empty()) {
+                    driver_->options_.output = arg + ".v";
+                }
+                return ARG_OK;
+            }
+            return ARG_BAD;
+        }
+
+    private:
+        BackendCmdlineDriver* driver_;
+};
 
 void BackendCmdlineDriver::ParseArgs(int argc, const char* const* argv) {
-    // Look for flags.
-    while (argc >= 1) {
-        string flag = argv[0];
-        if (flag.empty() || flag[0] != '-') break;
-        argv++;
-        argc--;
-        string value = (argc > 0) ? argv[0] : "";  // don't consume it yet
-        bool consumed_value = false;
-        InterpretFlag(flag, value, &consumed_value);
-        if (consumed_value) {
-            if (argc == 0) {
-                throw autopiper::Exception(
-                        strprintf("Flag '%s' requires a value.", flag.c_str()));
-            }
-            argv++;
-            argc--;
-        }
-    }
-
-    if (argc != 1) {
-        cerr << "No input filename specified." << endl
-             << "Specify -h for usage help." << endl;
-        throw autopiper::Exception("No compilation performed.");
-    }
-
-    file_ = argv[0];
-    if (output_.empty()) {
-        output_ = file_ + ".v";
-    }
+    BackendFlags parser(this, argc, argv);
+    parser.Parse();
 }
 
 void BackendCmdlineDriver::Execute() {
+    BackendCompiler compiler_;
     CmdlineErrorCollector collector(&std::cerr);
-    if (!compiler_.CompileFile(file_, output_, options_, &collector)) {
+    if (!compiler_.CompileFile(options_, &collector)) {
         throw autopiper::Exception("Compilation failed.");
     }
 }

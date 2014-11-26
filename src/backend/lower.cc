@@ -17,7 +17,7 @@
 #include "backend/pipe.h"
 #include "backend/ir.h"
 #include "backend/compiler.h"
-#include "backend/util.h"
+#include "common/util.h"
 #include "backend/rpo.h"
 #include "backend/predicate.h"
 #include "backend/ir-build.h"

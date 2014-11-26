@@ -26,7 +26,7 @@
 
 #include "backend/ir.h"
 #include "backend/rpo.h"
-#include "backend/util.h"
+#include "common/util.h"
 
 namespace autopiper {
 

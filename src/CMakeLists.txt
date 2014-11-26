@@ -18,10 +18,14 @@ set(FRONTEND_SRCS
     frontend/parser.cc
     frontend/ast.cc
     frontend/codegen.cc
+    frontend/compiler.cc
     frontend/cmdline-driver.cc)
 
 set(FRONTEND_DRIVER
     frontend/main.cc)
+
+set(COMMON_SRCS
+    common/parse-args.cc)
 
 # Optionally build a statically-linked executable. This comes first so that
 # static versions of third-party libraries are found below.
@@ -53,10 +57,10 @@ include_directories("${PROJECT_BINARY_DIR}")
 add_library(backend STATIC ${BACKEND_SRCS})
 
 # Build the main compiler backend with the above sources.
-add_executable(autopiper-backend ${BACKEND_DRIVER})
+add_executable(autopiper-backend ${BACKEND_DRIVER} ${COMMON_SRCS})
 target_link_libraries(autopiper-backend backend)
 target_link_libraries(autopiper-backend ${AUTOPIPER_LIBS})
 
-add_executable(autopiper ${FRONTEND_SRCS} ${FRONTEND_DRIVER})
+add_executable(autopiper ${FRONTEND_SRCS} ${FRONTEND_DRIVER} ${COMMON_SRCS})
 target_link_libraries(autopiper backend)
 target_link_libraries(autopiper ${AUTOPIPER_LIBS})

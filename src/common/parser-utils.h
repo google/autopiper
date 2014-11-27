@@ -253,8 +253,13 @@ struct Token {
 class Lexer {
     public:
         Lexer(std::istream* in)
-            : stream_(in), have_peek_(false) {
+            : stream_(in), have_peek_(false),
+              ignore_newline_(false) {
             ReadNext();
+        }
+
+        void SetIgnoreNewline(bool ignore_newline) {
+            ignore_newline_ = ignore_newline;
         }
 
         Token Peek() const {
@@ -482,12 +487,20 @@ class Lexer {
                         break;
                 }
             }
+
+            if (Have() &&
+                Peek().type == Token::NEWLINE &&
+                ignore_newline_) {
+                return ReadNext();
+            }
+
             return Have();
         }
     private:
         PeekableStream stream_;
         Token token_;
         bool have_peek_;
+        bool ignore_newline_;
 
         enum LexState {
             S_INIT,

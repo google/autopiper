@@ -34,7 +34,6 @@ CmdlineParser::~CmdlineParser()
 void CmdlineParser::Parse() {
     while (argc_ >= 1) {
         string flag = argv_[0];
-        if (flag.empty() || flag[0] != '-') break;
         argv_++;
         argc_--;
         bool have_value = argc_ > 0;

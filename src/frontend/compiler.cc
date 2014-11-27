@@ -35,6 +35,7 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
                                string("Could not open file '") +
                                options.filename +
                                string("'"));
+        return false;
     }
 
     Lexer lexer(&in);

@@ -159,7 +159,7 @@ bool Parser::ParseTypeDef(ASTTypeDef* def) {
         if (TryConsume(Token::RBRACE)) {
             break;
         }
-        ASTRef<ASTTypeField> field;
+        ASTRef<ASTTypeField> field(new ASTTypeField());
         field->ident.reset(new ASTIdent());
         if (!ParseIdent(field->ident.get())) {
             return false;

@@ -30,7 +30,9 @@ namespace frontend {
 class Parser : public ParserBase {
     public:
         Parser(std::string filename, Lexer* lexer, ErrorCollector* collector)
-            : ParserBase(filename, lexer, collector) {}
+            : ParserBase(filename, lexer, collector) {
+            lexer->SetIgnoreNewline(true);
+        }
 
         bool Parse(AST* ast);
 

@@ -496,34 +496,181 @@ ASTRef<ASTExpr> Parser::ParseExprGroup9() {
 
 // Group 10: unary ops (~, unary +, unary -)
 ASTRef<ASTExpr> Parser::ParseExprGroup10() {
-    return astnull<ASTExpr>();
+    if (TryExpect(Token::TILDE) ||
+        TryExpect(Token::PLUS) ||
+        TryExpect(Token::DASH)) {
+        Token::Type tok = CurToken().type;
+        Consume();
+
+        auto op = ParseExprGroup11();
+        if (!op) {
+            return op;
+        }
+        ASTRef<ASTExpr> ret(new ASTExpr());
+        ret->ops.push_back(move(op));
+
+        if (tok == Token::TILDE) {
+            // bitwise complement.
+            ret->op = ASTExpr::NOT;
+        } else if (tok == Token::DASH) {
+            // unary minus -- desuguar to 0 - x.
+            ret->op = ASTExpr::SUB;
+            ASTRef<ASTExpr> const_0(new ASTExpr(0));
+            ret->ops.push_back(move(const_0));
+            std::swap(ret->ops[0], ret->ops[1]);
+        } else if (tok == Token::PLUS) {
+            // unary plus -- just elide it.
+            ret = move(op);
+        }
+
+        return ret;
+    }
+    return ParseExprGroup11();
 }
 
 // Group 11: array subscripting ([]), field dereferencing (.), function calls
 ASTRef<ASTExpr> Parser::ParseExprGroup11() {
-    return astnull<ASTExpr>();
+    auto op = ParseExprAtom();
+    while (true) {
+        if (TryConsume(Token::DOT)) {
+            // field dereference
+
+            if (!Expect(Token::IDENT)) {
+                return astnull<ASTExpr>();
+            }
+            string field_name = CurToken().s;
+            Consume();
+            ASTRef<ASTExpr> field_ref(new ASTExpr());
+            field_ref->op = ASTExpr::FIELD_REF;
+            field_ref->ops.push_back(move(op));
+            field_ref->ident.reset(new ASTIdent());
+            field_ref->ident->name = field_name;
+            field_ref->ident->type = ASTIdent::FIELD;
+            op = move(field_ref);
+
+            continue;
+        }
+        if (TryConsume(Token::LBRACKET)) {
+            // array dereference or bitslicing
+
+            ASTRef<ASTExpr> leftindex;
+            ASTRef<ASTExpr> rightindex;
+            leftindex = move(ParseExpr());
+            if (!leftindex) {
+                return leftindex;
+            }
+
+            if (TryConsume(Token::COLON)) {
+                rightindex = move(ParseExpr());
+            }
+
+            if (!Consume(Token::RBRACKET)) {
+                return astnull<ASTExpr>();
+            }
+
+            ASTRef<ASTExpr> ret(new ASTExpr());
+            ret->ops.push_back(move(op));
+            ret->ops.push_back(move(leftindex));
+            if (rightindex) {
+                ret->op = ASTExpr::BITSLICE;
+                ret->ops.push_back(move(rightindex));
+            } else {
+                ret->op = ASTExpr::ARRAY_REF;
+            }
+            op = move(ret);
+
+            continue;
+        }
+        if (TryConsume(Token::LPAREN)) {
+            // function call
+ 
+            ASTVector<ASTExpr> args;
+            while (true) {
+                if (TryConsume(Token::RPAREN)) {
+                    break;
+                }
+                if (!args.empty() &&
+                    !Consume(Token::COMMA)) {
+                    return astnull<ASTExpr>();
+                }
+                auto arg = ParseExpr();
+                args.push_back(move(arg));
+            }
+
+            ASTRef<ASTExpr> func_call(new ASTExpr());
+            func_call->op = ASTExpr::FUNCCALL;
+            func_call->ops.push_back(move(op));
+            for (auto& arg : args) {
+                func_call->ops.push_back(move(arg));
+            }
+            op = move(func_call);
+
+            continue;
+        }
+        break;
+    }
+
+    return op;
 }
 
-// Atoms/terminals: identifiers, literals
+// Atoms/terminals: identifiers, literals, parenthesized expressions,
+// concatenation
 ASTRef<ASTExpr> Parser::ParseExprAtom() {
-    // Identifier: either a variable reference, a function call, or a port
-    // read.
     if (TryExpect(Token::IDENT)) {
         const string& ident = CurToken().s;
+        ASTRef<ASTExpr> ret(new ASTExpr());
+        ret->ident.reset(new ASTIdent());
 
         if (ident == "read") {
-            ASTRef<ASTExpr> ret(new ASTExpr());
+            Consume();
             ret->op = ASTExpr::PORTREAD;
-            ret->ident.reset(new ASTIdent());
             if (!ParseIdent(ret->ident.get())) {
                 return astnull<ASTExpr>();
             }
             return ret;
         }
 
-        // Otherwise, either a variable reference or a function call.
-        // Consume the identifier and check whether a parenthesis follows.
+        // Otherwise, it's a variable reference.
+        ret->op = ASTExpr::VAR;
+        if (!ParseIdent(ret->ident.get())) {
+            return astnull<ASTExpr>();
+        }
+        return ret;
+    }
+
+    if (TryExpect(Token::INT_LITERAL)) {
+        ASTRef<ASTExpr> ret(new ASTExpr());
+        ret->op = ASTExpr::CONST;
+        ret->constant = CurToken().int_literal;
         Consume();
+        return ret;
+    }
+
+    if (TryConsume(Token::LPAREN)) {
+        auto expr = ParseExpr();
+        if (!Consume(Token::RPAREN)) {
+            return astnull<ASTExpr>();
+        }
+        return expr;
+    }
+
+    if (TryConsume(Token::LBRACE)) {
+        ASTRef<ASTExpr> ret(new ASTExpr());
+        ret->op = ASTExpr::CONCAT;
+        while (true) {
+            if (TryConsume(Token::RBRACE)) {
+                break;
+            }
+            if (!ret->ops.empty() && !Consume(Token::COMMA)) {
+                return astnull<ASTExpr>();
+            }
+            auto expr = ParseExpr();
+            if (!expr) {
+                return expr;
+            }
+            ret->ops.push_back(move(expr));
+        }
+        return ret;
     }
 
     return astnull<ASTExpr>();

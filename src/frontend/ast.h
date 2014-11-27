@@ -98,6 +98,7 @@ struct ASTIdent {
         FUNC,
         VAR,
         TYPE,
+        FIELD,
     };
     Type type;
 };
@@ -197,6 +198,8 @@ struct ASTExpr {
 
         VAR,
         CONST,
+        FIELD_REF,
+        ARRAY_REF,
 
         FUNCCALL,
 

@@ -11,12 +11,17 @@ high-performance implementations.
 Autopiper is a research project -- this may or may not work! -- and is intended
 for now more as a developed-in-the-open toy than a serious tool.
 
+Autopiper is developed by Chris Fallin `<cfallin@c1f.net>`. Autopiper's
+copyright is assigned to Google Inc., but autopiper is an independent
+side-project and is not an official Google product in any way.
+
 Current status
 --------------
 
-The pipeline lowering / synthesis backend (IR to Verilog) is in-progress.
-Following completion of the backend, I plan to work on a frontend (pending an
-appropriate frontend language design!) and a macro layer.
+The pipeline lowering / synthesis backend (IR to Verilog) has implemented the
+key transforms, and works with small tests. Currently the frontend is in
+development (parsing, typechecking/inference, codegen), after which the macro
+layer will be developed alongside some larger test designs.
 
 In other words: it's not actually done yet! You can play with the current
 functionality, i.e., lowering IR to pipeline form, by running autopiper on the
@@ -43,10 +48,3 @@ $ cd build/
 $ cmake ..
 $ make
 $ src/autopiper --help
-
-Authorship
-----------
-
-Autopiper is developed by Chris Fallin <cfallin@c1f.net>. Autopiper's copyright
-is assigned to Google Inc., but autopiper is an independent side-project and is
-not an official Google product in any way.

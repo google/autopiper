@@ -371,6 +371,8 @@ class Lexer {
                         P(TICK, '\'');
                         P(BACKTICK, '`');
 
+#undef P
+
                         // Compound punctuation: handled specially here by
                         // consuming and peeking at the next char.
                         if (c == '=') {

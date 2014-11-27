@@ -45,6 +45,10 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
         return false;
     }
 
+    if (options.print_ast) {
+        PrintAST(ast.get(), cout);
+    }
+
     // TODO: crosslinking
     // TODO: typechecking and width inferencing
     // TODO: AST-visitor codegen pass

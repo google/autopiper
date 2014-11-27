@@ -59,7 +59,6 @@ struct ASTStmtSpawn;
 struct ASTExpr;
 
 struct ASTTypeField;
-struct ASTTypeFieldRef;
 
 struct AST {
     ASTVector<ASTFunctionDef> functions;
@@ -220,6 +219,34 @@ struct ASTExpr {
         : op(CONST), constant(constant_)
     {}
 };
+
+template<typename T>
+void PrintAST(const T* node, std::ostream& out, int indent = 0);
+
+#define AST_PRINTER(type)                                                     \
+    template<>                                                                \
+    void PrintAST<type>(const type* node, std::ostream& out, int indent)  \
+
+AST_PRINTER(AST);
+AST_PRINTER(ASTFunctionDef);
+AST_PRINTER(ASTTypeDef);
+AST_PRINTER(ASTIdent);
+AST_PRINTER(ASTType);
+AST_PRINTER(ASTParam);
+AST_PRINTER(ASTStmt);
+AST_PRINTER(ASTStmtBlock);
+AST_PRINTER(ASTStmtLet);
+AST_PRINTER(ASTStmtAssign);
+AST_PRINTER(ASTStmtIf);
+AST_PRINTER(ASTStmtWhile);
+AST_PRINTER(ASTStmtBreak);
+AST_PRINTER(ASTStmtContinue);
+AST_PRINTER(ASTStmtWrite);
+AST_PRINTER(ASTStmtSpawn);
+AST_PRINTER(ASTExpr);
+AST_PRINTER(ASTTypeField);
+
+#undef AST_PRINTER
 
 }  // namespace frontend
 }  // namespace autopiper

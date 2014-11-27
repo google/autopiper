@@ -3,14 +3,14 @@ type AggType {
     y : int32;
 }
 
-entry func main() : void {
+func entry main() : void {
     let global_in : port int32 = port "global_in";
     let global_out : port int32 = port "global_out";
     let anon_port : port int32 = port;
 
     let x = read global_in;
     let y = x;
-    let z = AggType { x = 0, y = 0 };
+    let z = [ x = 0, y = 0 ];
     while (y > 0) {
         write global_out, y;
         if (y & 1) {

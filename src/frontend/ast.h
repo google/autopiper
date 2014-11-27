@@ -98,6 +98,7 @@ struct ASTIdent {
         VAR,
         TYPE,
         FIELD,
+        PORT,
     };
     Type type;
 };
@@ -199,6 +200,9 @@ struct ASTExpr {
         CONST,
         FIELD_REF,
         ARRAY_REF,
+
+        AGGLITERAL,
+        AGGLITERALFIELD,
 
         FUNCCALL,
 

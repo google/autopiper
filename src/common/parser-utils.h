@@ -377,6 +377,7 @@ class Lexer {
                         // consuming and peeking at the next char.
                         if (c == '=') {
                           stream_.ReadNext();
+                          c = stream_.Peek();
                           if (stream_.Have() && c == '=') {
                             stream_.ReadNext();
                             Emit(line, col, Token::DOUBLE_EQUAL);
@@ -387,6 +388,7 @@ class Lexer {
                         }
                         if (c == '!') {
                           stream_.ReadNext();
+                          c = stream_.Peek();
                           if (stream_.Have() && c == '=') {
                             stream_.ReadNext();
                             Emit(line, col, Token::NOT_EQUAL);
@@ -397,6 +399,7 @@ class Lexer {
                         }
                         if (c == '<') {
                           stream_.ReadNext();
+                          c = stream_.Peek();
                           if (stream_.Have() && c == '=') {
                             stream_.ReadNext();
                             Emit(line, col, Token::LESS_EQUAL);
@@ -410,6 +413,7 @@ class Lexer {
                         }
                         if (c == '>') {
                           stream_.ReadNext();
+                          c = stream_.Peek();
                           if (stream_.Have() && c == '=') {
                             stream_.ReadNext();
                             Emit(line, col, Token::GREATER_EQUAL);

@@ -29,30 +29,32 @@ namespace autopiper {
 namespace frontend {
 
 bool Parser::Parse(AST* ast) {
-    // A program is a series of defs.
-    if (TryConsume(Token::EOFTOKEN)) {
-        return true;
-    }
+    while (true) {
+        // A program is a series of defs.
+        if (CurToken().type == Token::EOFTOKEN) {
+            return true;
+        }
 
-    Expect(Token::IDENT);
+        Expect(Token::IDENT);
 
-    if (CurToken().s == "type") {
-        Consume();
-        ASTRef<ASTTypeDef> td(new ASTTypeDef());
-        if (!ParseTypeDef(td.get())) {
+        if (CurToken().s == "type") {
+            Consume();
+            ASTRef<ASTTypeDef> td(new ASTTypeDef());
+            if (!ParseTypeDef(td.get())) {
+                return false;
+            }
+            ast->types.push_back(move(td));
+        } else if (CurToken().s == "func") {
+            Consume();
+            ASTRef<ASTFunctionDef> fd(new ASTFunctionDef());
+            if (!ParseFuncDef(fd.get())) {
+                return false;
+            }
+            ast->functions.push_back(move(fd));
+        } else {
+            Error("Expected 'type' or 'func' keyword.");
             return false;
         }
-        ast->types.push_back(move(td));
-    } else if (CurToken().s == "func") {
-        Consume();
-        ASTRef<ASTFunctionDef> fd(new ASTFunctionDef());
-        if (!ParseFuncDef(fd.get())) {
-            return false;
-        }
-        ast->functions.push_back(move(fd));
-    } else {
-        Error("Expected 'type' or 'func' keyword.");
-        return false;
     }
 
     return true;
@@ -74,6 +76,7 @@ bool Parser::ParseFuncDef(ASTFunctionDef* def) {
     if (!ParseIdent(def->name.get())) {
         return false;
     }
+    def->name->type = ASTIdent::FUNC;
 
     if (!Consume(Token::LPAREN)) {
         return false;
@@ -111,6 +114,7 @@ bool Parser::ParseFuncArgList(ASTFunctionDef* def) {
         if (!ParseIdent(param->ident.get())) {
             return false;
         }
+        param->ident->type = ASTIdent::VAR;
         if (!Consume(Token::COLON)) {
             return false;
         }
@@ -152,6 +156,7 @@ bool Parser::ParseTypeDef(ASTTypeDef* def) {
     if (!ParseIdent(def->ident.get())) {
         return false;
     }
+    def->ident->type = ASTIdent::TYPE;
     if (!Consume(Token::LBRACE)) {
         return false;
     }
@@ -164,6 +169,7 @@ bool Parser::ParseTypeDef(ASTTypeDef* def) {
         if (!ParseIdent(field->ident.get())) {
             return false;
         }
+        field->ident->type = ASTIdent::FIELD;
         if (!Consume(Token::COLON)) {
             return false;
         }
@@ -203,6 +209,7 @@ bool Parser::ParseType(ASTType* ty) {
     if (!ParseIdent(ty->ident.get())) {
         return false;
     }
+    ty->ident->type = ASTIdent::TYPE;
     return true;
 }
 
@@ -242,6 +249,7 @@ bool Parser::ParseStmtLet(ASTStmtLet* let) {
     if (!ParseIdent(let->lhs.get())) {
         return false;
     }
+    let->lhs->type = ASTIdent::VAR;
 
     if (TryConsume(Token::COLON)) {
         let->type.reset(new ASTType());
@@ -267,6 +275,7 @@ bool Parser::ParseStmtAssign(ASTStmtAssign* assign) {
     if (!ParseIdent(assign->lhs.get())) {
         return false;
     }
+    assign->lhs->type = ASTIdent::VAR;
 
     if (!Consume(Token::EQUALS)) {
         return false;
@@ -335,6 +344,10 @@ bool Parser::ParseStmtContinue(ASTStmtContinue* continue_) {
 bool Parser::ParseStmtWrite(ASTStmtWrite* write) {
     write->port.reset(new ASTIdent());
     if (!ParseIdent(write->port.get())) {
+        return false;
+    }
+    write->port->type = ASTIdent::VAR;
+    if (!Consume(Token::COMMA)) {
         return false;
     }
     write->rhs = ParseExpr();
@@ -627,6 +640,19 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             if (!ParseIdent(ret->ident.get())) {
                 return astnull<ASTExpr>();
             }
+            ret->ident->type = ASTIdent::PORT;
+            return ret;
+        }
+        
+        if (ident == "port") {
+            Consume();
+            ret->op = ASTExpr::PORTDEF;
+            if (TryExpect(Token::QUOTED_STRING)) {
+                ret->ident.reset(new ASTIdent());
+                ret->ident->name = CurToken().s;
+                ret->ident->type = ASTIdent::PORT;
+                Consume();
+            }
             return ret;
         }
 
@@ -635,6 +661,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
         if (!ParseIdent(ret->ident.get())) {
             return astnull<ASTExpr>();
         }
+        ret->ident->type = ASTIdent::VAR;
         return ret;
     }
 
@@ -647,6 +674,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
     }
 
     if (TryConsume(Token::LPAREN)) {
+        // Parenthesized expression
         auto expr = ParseExpr();
         if (!Consume(Token::RPAREN)) {
             return astnull<ASTExpr>();
@@ -655,6 +683,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
     }
 
     if (TryConsume(Token::LBRACE)) {
+        // Concatenation, as in Verilog: { sig1, sig2, sig3 }
         ASTRef<ASTExpr> ret(new ASTExpr());
         ret->op = ASTExpr::CONCAT;
         while (true) {
@@ -669,6 +698,37 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
                 return expr;
             }
             ret->ops.push_back(move(expr));
+        }
+        return ret;
+    }
+
+    if (TryConsume(Token::LBRACKET)) {
+        // Aggregate type literal
+        ASTRef<ASTExpr> ret(new ASTExpr());
+        ret->op = ASTExpr::AGGLITERAL;
+        while (true) {
+            if (TryConsume(Token::RBRACKET)) {
+                break;
+            }
+            if (!ret->ops.empty() && !Consume(Token::COMMA)) {
+                return astnull<ASTExpr>();
+            }
+            ASTRef<ASTExpr> field(new ASTExpr());
+            field->op = ASTExpr::AGGLITERALFIELD;
+            field->ident.reset(new ASTIdent());
+            if (!ParseIdent(field->ident.get())) {
+                return astnull<ASTExpr>();
+            }
+            field->ident->type = ASTIdent::FIELD;
+            if (!TryConsume(Token::EQUALS)) {
+                return astnull<ASTExpr>();
+            }
+            auto expr = ParseExpr();
+            if (!expr) {
+                return expr;
+            }
+            field->ops.push_back(move(expr));
+            ret->ops.push_back(move(field));
         }
         return ret;
     }

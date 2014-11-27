@@ -64,7 +64,7 @@ AST_PRINTER(ASTFunctionDef) {
     P(node->return_type.get(), 2);
     out << ")" << endl;
 
-    out << I(1) << "(params";
+    out << I(1) << "(params" << endl;
     for (auto& param : node->params) {
         P(param.get(), 2);
     }
@@ -90,6 +90,7 @@ AST_PRINTER(ASTIdent) {
         case ASTIdent::VAR: out << "VAR"; break;
         case ASTIdent::TYPE: out << "TYPE"; break;
         case ASTIdent::FIELD: out << "FIELD"; break;
+        case ASTIdent::PORT: out << "PORT"; break;
     }
     out << ")";
 }
@@ -252,6 +253,8 @@ AST_PRINTER(ASTExpr) {
         T(CONST);
         T(FIELD_REF);
         T(ARRAY_REF);
+        T(AGGLITERAL);
+        T(AGGLITERALFIELD);
 
         T(FUNCCALL);
 

@@ -17,6 +17,7 @@ set(BACKEND_DRIVER
 set(FRONTEND_SRCS
     frontend/parser.cc
     frontend/ast.cc
+    frontend/visitor.cc
     frontend/codegen.cc
     frontend/compiler.cc
     frontend/cmdline-driver.cc)

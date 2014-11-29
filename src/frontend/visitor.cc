@@ -16,6 +16,8 @@
 
 #include "frontend/visitor.h"
 
+using namespace std;
+
 namespace autopiper {
 namespace frontend {
 
@@ -151,6 +153,164 @@ VISIT(ASTTypeField, {
 })
 
 #undef VISIT
+
+// ------------------- modify methods ------------------------
+
+#define MODIFY(type, code_block)                                     \
+    ASTRef<type> ASTVisitor::Modify ## type(ASTRef<type> node,       \
+        ASTVisitorContext* context) const {                          \
+        node = context->Modify ## type ## Pre (move(node));          \
+        code_block                                                   \
+        node = context->Modify ## type ## Post(move(node));          \
+        return node;                                                 \
+    }
+
+MODIFY(AST, {
+    for (int i = 0; i < node->types.size(); i++) {
+        node->types[i] =
+            ModifyASTTypeDef(move(node->types[i]), context);
+    }
+    for (int i = 0; i < node->functions.size(); i++) {
+        node->functions[i] =
+            ModifyASTFunctionDef(move(node->functions[i]), context);
+    }
+})
+
+MODIFY(ASTFunctionDef, {
+    node->name = ModifyASTIdent(move(node->name), context);
+    node->return_type =
+        ModifyASTType(move(node->return_type), context);
+    for (int i = 0; i < node->params.size(); i++) {
+        node->params[i] =
+            ModifyASTParam(move(node->params[i]), context);
+    }
+    node->block =
+        ModifyASTStmtBlock(move(node->block), context);
+})
+
+MODIFY(ASTTypeDef, {
+    node->ident =
+        ModifyASTIdent(move(node->ident), context);
+    for (int i = 0; i < node->fields.size(); i++) {
+        node->fields[i] =
+            ModifyASTTypeField(move(node->fields[i]), context);
+    }
+})
+
+MODIFY(ASTIdent, {})  // no subnodes
+
+MODIFY(ASTType, {
+    node->ident =
+        ModifyASTIdent(move(node->ident), context);
+})
+
+MODIFY(ASTParam, {
+    node->ident =
+        ModifyASTIdent(move(node->ident), context);
+    node->type =
+        ModifyASTType(move(node->type), context);
+})
+
+#define T(field, type)                                             \
+        if (node-> field ) {                                       \
+            node-> field =                                         \
+                ModifyASTStmt ## type(move(node->field), context); \
+        }
+
+MODIFY(ASTStmt, {
+    T(block, Block)
+    T(let, Let)
+    T(assign, Assign)
+    T(if_, If)
+    T(while_, While)
+    T(break_, Break)
+    T(continue_, Continue)
+    T(write, Write)
+    T(spawn, Spawn)
+})
+
+#undef T
+
+MODIFY(ASTStmtBlock, {
+    for (int i = 0; i < node->stmts.size(); i++) {
+        node->stmts[i] =
+            ModifyASTStmt(move(node->stmts[i]), context);
+    }
+})
+
+MODIFY(ASTStmtLet, {
+    node->lhs =
+        ModifyASTIdent(move(node->lhs), context);
+    if (node->type) {
+        node->type =
+            ModifyASTType(move(node->type), context);
+    }
+    node->rhs =
+        ModifyASTExpr(move(node->rhs), context);
+})
+
+MODIFY(ASTStmtAssign, {
+    node->lhs =
+        ModifyASTIdent(move(node->lhs), context);
+    node->rhs =
+        ModifyASTExpr(move(node->rhs), context);
+})
+
+MODIFY(ASTStmtIf, {
+    node->condition =
+        ModifyASTExpr(move(node->condition), context);
+    node->if_body =
+        ModifyASTStmt(move(node->if_body), context);
+    if (node->else_body) {
+        node->else_body =
+            ModifyASTStmt(move(node->else_body), context);
+    }
+})
+
+MODIFY(ASTStmtWhile, {
+    node->condition =
+        ModifyASTExpr(move(node->condition), context);
+    node->body =
+        ModifyASTStmt(move(node->body), context);
+})
+
+MODIFY(ASTStmtBreak, {})
+
+MODIFY(ASTStmtContinue, {})
+
+MODIFY(ASTStmtWrite, {
+    node->port =
+        ModifyASTIdent(move(node->port), context);
+    node->rhs =
+        ModifyASTExpr(move(node->rhs), context);
+})
+
+MODIFY(ASTStmtSpawn, {
+    node->body =
+        ModifyASTStmt(move(node->body), context);
+})
+
+MODIFY(ASTExpr, {
+    for (int i = 0; i < node->ops.size(); i++) {
+        node->ops[i] =
+            ModifyASTExpr(move(node->ops[i]), context);
+    }
+    if (node->ident) {
+        node->ident =
+            ModifyASTIdent(move(node->ident), context);
+    }
+    if (node->type) {
+        node->type =
+            ModifyASTType(move(node->type), context);
+    }
+})
+
+MODIFY(ASTTypeField, {
+    node->ident =
+        ModifyASTIdent(move(node->ident), context);
+    node->type =
+        ModifyASTType(move(node->type), context);
+})
 
 }  // namespace frontend
 }  // namespace autopiper

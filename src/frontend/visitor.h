@@ -35,8 +35,8 @@ class ASTVisitor {
     private:
 #define METHODS(type)                                                          \
         void Visit ## type(const type* ast, ASTVisitorContext* context) const; \
-        ASTRef<AST> Modify ## type(ASTRef<AST> ast, ASTVisitorContext* contex) \
-            const;
+        ASTRef<type> Modify ## type(ASTRef<type> node,                         \
+            ASTVisitorContext* contex) const;
 
         METHODS(AST)
         METHODS(ASTFunctionDef)

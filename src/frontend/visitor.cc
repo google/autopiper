@@ -25,6 +25,11 @@ void ASTVisitor::Visit(const AST* ast, ASTVisitorContext* context) const {
     VisitAST(ast, context);
 }
 
+ASTRef<AST> ASTVisitor::Modify(ASTRef<AST> ast, ASTVisitorContext* context)
+    const {
+    return ModifyAST(move(ast), context);
+}
+
 // ---------------------- visitor methods --------------------
 
 #define VISIT(type, visit_code)                                     \

@@ -18,6 +18,7 @@
 #define _AUTOPIPER_FRONTEND_VISITOR_H_
 
 #include "frontend/ast.h"
+#include "common/parser-utils.h"  // ErrorCollector
 
 namespace autopiper {
 namespace frontend {
@@ -29,14 +30,13 @@ class ASTVisitor {
         ASTVisitor() {}
         ~ASTVisitor() {}
 
-        void Visit(const AST* ast, ASTVisitorContext* context) const;
+        bool Visit(const AST* ast, ASTVisitorContext* context) const;
         ASTRef<AST> Modify(ASTRef<AST> ast, ASTVisitorContext* context) const;
 
-    private:
 #define METHODS(type)                                                          \
-        void Visit ## type(const type* ast, ASTVisitorContext* context) const; \
+        bool Visit ## type(const type* ast, ASTVisitorContext* context) const; \
         ASTRef<type> Modify ## type(ASTRef<type> node,                         \
-            ASTVisitorContext* contex) const;
+            ASTVisitorContext* context) const;
 
         METHODS(AST)
         METHODS(ASTFunctionDef)
@@ -54,6 +54,7 @@ class ASTVisitor {
         METHODS(ASTStmtContinue)
         METHODS(ASTStmtWrite)
         METHODS(ASTStmtSpawn)
+        METHODS(ASTStmtReturn)
         METHODS(ASTExpr)
         METHODS(ASTTypeField)
 
@@ -62,11 +63,21 @@ class ASTVisitor {
 
 class ASTVisitorContext {
     public:
-        ASTVisitorContext() {}
+        ASTVisitorContext() : coll_(nullptr) {}
+        ASTVisitorContext(autopiper::ErrorCollector* coll) : coll_(coll) {}
         ~ASTVisitorContext() {}
 
     protected:
         friend class ASTVisitor;
+
+        ErrorCollector* Errors() { return coll_; }
+
+        template<typename T> void Error(const T* node, const std::string& str) {
+            if (Errors()) {
+                Errors()->ReportError(node->loc,
+                        autopiper::ErrorCollector::ERROR, str);
+            }
+        }
 
         // The visitor can override up to three methods per node type: a
         // Visit<type>() method, a Visit<type>Post() method, and a
@@ -85,9 +96,12 @@ class ASTVisitorContext {
         // The modification protocol is: each modification method returns the
         // new node that should replace the existing one, or the same node if
         // no modification is to be performed.
+        //
+        // If a Visit method returns false, or a Modify method returns a null
+        // pointer, traversal stops immediately.
 #define METHODS(type)                                                          \
-        virtual void  Visit ## type ## Pre(const type* node) {}                \
-        virtual void  Visit ## type ## Post(const type* node) {}               \
+        virtual bool Visit ## type ## Pre(const type* node) { return true; }   \
+        virtual bool  Visit ## type ## Post(const type* node) { return true; } \
         virtual ASTRef<type> Modify ## type ## Pre(ASTRef<type> node)          \
             { return node; }                                                   \
         virtual ASTRef<type> Modify ## type ## Post(ASTRef<type> node)         \
@@ -109,10 +123,14 @@ class ASTVisitorContext {
         METHODS(ASTStmtContinue)
         METHODS(ASTStmtWrite)
         METHODS(ASTStmtSpawn)
+        METHODS(ASTStmtReturn)
         METHODS(ASTExpr)
         METHODS(ASTTypeField)
 
 #undef METHODS
+
+    private:
+        ErrorCollector* coll_;
 };
 
 }  // namesapce frontend

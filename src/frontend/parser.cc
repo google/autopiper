@@ -28,6 +28,15 @@ using namespace std;
 namespace autopiper {
 namespace frontend {
 
+template<typename T>
+ASTRef<T> Parser::New() {
+    ASTRef<T> t(new T());
+    t->loc.filename = filename_;
+    t->loc.line = CurToken().line;
+    t->loc.column = CurToken().col;
+    return t;
+}
+
 bool Parser::Parse(AST* ast) {
     while (true) {
         // A program is a series of defs.
@@ -39,14 +48,14 @@ bool Parser::Parse(AST* ast) {
 
         if (CurToken().s == "type") {
             Consume();
-            ASTRef<ASTTypeDef> td(new ASTTypeDef());
+            ASTRef<ASTTypeDef> td = New<ASTTypeDef>();
             if (!ParseTypeDef(td.get())) {
                 return false;
             }
             ast->types.push_back(move(td));
         } else if (CurToken().s == "func") {
             Consume();
-            ASTRef<ASTFunctionDef> fd(new ASTFunctionDef());
+            ASTRef<ASTFunctionDef> fd = New<ASTFunctionDef>();
             if (!ParseFuncDef(fd.get())) {
                 return false;
             }
@@ -61,7 +70,7 @@ bool Parser::Parse(AST* ast) {
 }
 
 bool Parser::ParseFuncDef(ASTFunctionDef* def) {
-    def->name.reset(new ASTIdent());
+    def->name = New<ASTIdent>();
     if (!Expect(Token::IDENT)) {
         return false;
     }
@@ -90,12 +99,12 @@ bool Parser::ParseFuncDef(ASTFunctionDef* def) {
     if (!Consume(Token::COLON)) {
         return false;
     }
-    def->return_type.reset(new ASTType());
+    def->return_type = New<ASTType>();
     if (!ParseType(def->return_type.get())) {
         return false;
     }
 
-    def->block.reset(new ASTStmtBlock());
+    def->block = New<ASTStmtBlock>();
     if (!ParseBlock(def->block.get())) {
         return false;
     }
@@ -109,8 +118,8 @@ bool Parser::ParseFuncArgList(ASTFunctionDef* def) {
             break;
         }
 
-        ASTRef<ASTParam> param(new ASTParam());
-        param->ident.reset(new ASTIdent());
+        ASTRef<ASTParam> param = New<ASTParam>();
+        param->ident = New<ASTIdent>();
         if (!ParseIdent(param->ident.get())) {
             return false;
         }
@@ -118,7 +127,7 @@ bool Parser::ParseFuncArgList(ASTFunctionDef* def) {
         if (!Consume(Token::COLON)) {
             return false;
         }
-        param->type.reset(new ASTType());
+        param->type = New<ASTType>();
         if (!ParseType(param->type.get())) {
             return false;
         }
@@ -137,7 +146,7 @@ bool Parser::ParseBlock(ASTStmtBlock* block) {
             break;
         }
 
-        ASTRef<ASTStmt> stmt(new ASTStmt());
+        ASTRef<ASTStmt> stmt = New<ASTStmt>();
         if (!ParseStmt(stmt.get())) {
             return false;
         }
@@ -152,7 +161,7 @@ bool Parser::ParseBlock(ASTStmtBlock* block) {
 }
 
 bool Parser::ParseTypeDef(ASTTypeDef* def) {
-    def->ident.reset(new ASTIdent());
+    def->ident = New<ASTIdent>();
     if (!ParseIdent(def->ident.get())) {
         return false;
     }
@@ -164,8 +173,8 @@ bool Parser::ParseTypeDef(ASTTypeDef* def) {
         if (TryConsume(Token::RBRACE)) {
             break;
         }
-        ASTRef<ASTTypeField> field(new ASTTypeField());
-        field->ident.reset(new ASTIdent());
+        ASTRef<ASTTypeField> field = New<ASTTypeField>();
+        field->ident = New<ASTIdent>();
         if (!ParseIdent(field->ident.get())) {
             return false;
         }
@@ -173,7 +182,7 @@ bool Parser::ParseTypeDef(ASTTypeDef* def) {
         if (!Consume(Token::COLON)) {
             return false;
         }
-        field->type.reset(new ASTType());
+        field->type = New<ASTType>();
         if (!ParseType(field->type.get())) {
             return false;
         }
@@ -205,7 +214,7 @@ bool Parser::ParseType(ASTType* ty) {
             return false;
         }
     }
-    ty->ident.reset(new ASTIdent());
+    ty->ident = New<ASTIdent>();
     if (!ParseIdent(ty->ident.get())) {
         return false;
     }
@@ -215,14 +224,14 @@ bool Parser::ParseType(ASTType* ty) {
 
 bool Parser::ParseStmt(ASTStmt* st) {
     if (TryExpect(Token::LBRACE)) {
-        st->block.reset(new ASTStmtBlock());
+        st->block = New<ASTStmtBlock>();
         return ParseBlock(st->block.get());
     }
 
 #define HANDLE_STMT_TYPE(str, field, name)                   \
     if (TryExpect(Token::IDENT) && CurToken().s == str) {    \
         Consume();                                           \
-        st-> field .reset(new ASTStmt ## name());            \
+        st-> field = New<ASTStmt ## name>();                 \
         return ParseStmt ## name(st-> field .get());         \
     }
 
@@ -233,26 +242,27 @@ bool Parser::ParseStmt(ASTStmt* st) {
     HANDLE_STMT_TYPE("continue", continue_, Continue);
     HANDLE_STMT_TYPE("write", write, Write);
     HANDLE_STMT_TYPE("spawn", spawn, Spawn);
+    HANDLE_STMT_TYPE("return", return_, Return);
 
 #undef HANDLE_STMT_TYPE
 
     // No keywords matched, so we must be seeing the left-hand side identifier
     // in an assignment.
-    st->assign.reset(new ASTStmtAssign());
+    st->assign = New<ASTStmtAssign>();
     return ParseStmtAssign(st->assign.get());
 }
 
 bool Parser::ParseStmtLet(ASTStmtLet* let) {
     // parent already consumed "def" keyword.
     
-    let->lhs.reset(new ASTIdent());
+    let->lhs = New<ASTIdent>();
     if (!ParseIdent(let->lhs.get())) {
         return false;
     }
     let->lhs->type = ASTIdent::VAR;
 
     if (TryConsume(Token::COLON)) {
-        let->type.reset(new ASTType());
+        let->type = New<ASTType>();
         if (!ParseType(let->type.get())) {
             return false;
         }
@@ -271,7 +281,7 @@ bool Parser::ParseStmtLet(ASTStmtLet* let) {
 }
 
 bool Parser::ParseStmtAssign(ASTStmtAssign* assign) {
-    assign->lhs.reset(new ASTIdent());
+    assign->lhs = New<ASTIdent>();
     if (!ParseIdent(assign->lhs.get())) {
         return false;
     }
@@ -300,13 +310,13 @@ bool Parser::ParseStmtIf(ASTStmtIf* if_) {
     if (!Consume(Token::RPAREN)) {
         return false;
     }
-    if_->if_body.reset(new ASTStmt());
+    if_->if_body = New<ASTStmt>();
     if (!ParseStmt(if_->if_body.get())) {
         return false;
     }
     if (TryExpect(Token::IDENT) && CurToken().s == "else") {
         Consume();
-        if_->else_body.reset(new ASTStmt());
+        if_->else_body = New<ASTStmt>();
         if (!ParseStmt(if_->else_body.get())) {
             return false;
         }
@@ -326,7 +336,7 @@ bool Parser::ParseStmtWhile(ASTStmtWhile* while_) {
     if (!Consume(Token::RPAREN)) {
         return false;
     }
-    while_->body.reset(new ASTStmt());
+    while_->body = New<ASTStmt>();
     if (!ParseStmt(while_->body.get())) {
         return false;
     }
@@ -342,7 +352,7 @@ bool Parser::ParseStmtContinue(ASTStmtContinue* continue_) {
 }
 
 bool Parser::ParseStmtWrite(ASTStmtWrite* write) {
-    write->port.reset(new ASTIdent());
+    write->port = New<ASTIdent>();
     if (!ParseIdent(write->port.get())) {
         return false;
     }
@@ -358,8 +368,13 @@ bool Parser::ParseStmtWrite(ASTStmtWrite* write) {
 }
 
 bool Parser::ParseStmtSpawn(ASTStmtSpawn* spawn) {
-    spawn->body.reset(new ASTStmt());
+    spawn->body = New<ASTStmt>();
     return ParseStmt(spawn->body.get());
+}
+
+bool Parser::ParseStmtReturn(ASTStmtReturn* return_) {
+    return_->value = ParseExpr();
+    return return_->value != nullptr;
 }
 
 ASTRef<ASTExpr> Parser::ParseExpr() {
@@ -375,7 +390,7 @@ ASTRef<ASTExpr> Parser::ParseExprGroup1() {
             return astnull<ASTExpr>();
         }
         auto op2 = ParseExprGroup1();
-        ASTRef<ASTExpr> ret(new ASTExpr());
+        ASTRef<ASTExpr> ret = New<ASTExpr>();
         ret->op = ASTExpr::SEL;
         ret->ops.push_back(move(expr));
         ret->ops.push_back(move(op1));
@@ -396,7 +411,7 @@ template<
     typename ...Args>
 ASTRef<ASTExpr> Parser::ParseLeftAssocBinops(Args&&... args) {
   ASTRef<ASTExpr> ret = (this->*next_level)();
-  ASTRef<ASTExpr> op_node(new ASTExpr());
+  ASTRef<ASTExpr> op_node = New<ASTExpr>();
   op_node->ops.push_back(move(ret));
   if (ParseLeftAssocBinopsRHS<this_level, next_level>(
       op_node.get(), args...)) {
@@ -519,7 +534,7 @@ ASTRef<ASTExpr> Parser::ParseExprGroup10() {
         if (!op) {
             return op;
         }
-        ASTRef<ASTExpr> ret(new ASTExpr());
+        ASTRef<ASTExpr> ret = New<ASTExpr>();
         ret->ops.push_back(move(op));
 
         if (tok == Token::TILDE) {
@@ -528,7 +543,9 @@ ASTRef<ASTExpr> Parser::ParseExprGroup10() {
         } else if (tok == Token::DASH) {
             // unary minus -- desuguar to 0 - x.
             ret->op = ASTExpr::SUB;
-            ASTRef<ASTExpr> const_0(new ASTExpr(0));
+            ASTRef<ASTExpr> const_0 = New<ASTExpr>();
+            const_0->op = ASTExpr::CONST;
+            const_0->constant = 0;
             ret->ops.push_back(move(const_0));
             std::swap(ret->ops[0], ret->ops[1]);
         } else if (tok == Token::PLUS) {
@@ -553,10 +570,10 @@ ASTRef<ASTExpr> Parser::ParseExprGroup11() {
             }
             string field_name = CurToken().s;
             Consume();
-            ASTRef<ASTExpr> field_ref(new ASTExpr());
+            ASTRef<ASTExpr> field_ref = New<ASTExpr>();
             field_ref->op = ASTExpr::FIELD_REF;
             field_ref->ops.push_back(move(op));
-            field_ref->ident.reset(new ASTIdent());
+            field_ref->ident = New<ASTIdent>();
             field_ref->ident->name = field_name;
             field_ref->ident->type = ASTIdent::FIELD;
             op = move(field_ref);
@@ -581,7 +598,7 @@ ASTRef<ASTExpr> Parser::ParseExprGroup11() {
                 return astnull<ASTExpr>();
             }
 
-            ASTRef<ASTExpr> ret(new ASTExpr());
+            ASTRef<ASTExpr> ret = New<ASTExpr>();
             ret->ops.push_back(move(op));
             ret->ops.push_back(move(leftindex));
             if (rightindex) {
@@ -610,7 +627,7 @@ ASTRef<ASTExpr> Parser::ParseExprGroup11() {
                 args.push_back(move(arg));
             }
 
-            ASTRef<ASTExpr> func_call(new ASTExpr());
+            ASTRef<ASTExpr> func_call = New<ASTExpr>();
             func_call->op = ASTExpr::FUNCCALL;
             func_call->ops.push_back(move(op));
             for (auto& arg : args) {
@@ -631,8 +648,8 @@ ASTRef<ASTExpr> Parser::ParseExprGroup11() {
 ASTRef<ASTExpr> Parser::ParseExprAtom() {
     if (TryExpect(Token::IDENT)) {
         const string& ident = CurToken().s;
-        ASTRef<ASTExpr> ret(new ASTExpr());
-        ret->ident.reset(new ASTIdent());
+        ASTRef<ASTExpr> ret = New<ASTExpr>();
+        ret->ident = New<ASTIdent>();
 
         if (ident == "read") {
             Consume();
@@ -648,7 +665,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             Consume();
             ret->op = ASTExpr::PORTDEF;
             if (TryExpect(Token::QUOTED_STRING)) {
-                ret->ident.reset(new ASTIdent());
+                ret->ident = New<ASTIdent>();
                 ret->ident->name = CurToken().s;
                 ret->ident->type = ASTIdent::PORT;
                 Consume();
@@ -666,7 +683,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
     }
 
     if (TryExpect(Token::INT_LITERAL)) {
-        ASTRef<ASTExpr> ret(new ASTExpr());
+        ASTRef<ASTExpr> ret = New<ASTExpr>();
         ret->op = ASTExpr::CONST;
         ret->constant = CurToken().int_literal;
         Consume();
@@ -684,7 +701,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
 
     if (TryConsume(Token::LBRACE)) {
         // Concatenation, as in Verilog: { sig1, sig2, sig3 }
-        ASTRef<ASTExpr> ret(new ASTExpr());
+        ASTRef<ASTExpr> ret = New<ASTExpr>();
         ret->op = ASTExpr::CONCAT;
         while (true) {
             if (TryConsume(Token::RBRACE)) {
@@ -704,7 +721,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
 
     if (TryConsume(Token::LBRACKET)) {
         // Aggregate type literal
-        ASTRef<ASTExpr> ret(new ASTExpr());
+        ASTRef<ASTExpr> ret = New<ASTExpr>();
         ret->op = ASTExpr::AGGLITERAL;
         while (true) {
             if (TryConsume(Token::RBRACKET)) {
@@ -713,9 +730,9 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             if (!ret->ops.empty() && !Consume(Token::COMMA)) {
                 return astnull<ASTExpr>();
             }
-            ASTRef<ASTExpr> field(new ASTExpr());
+            ASTRef<ASTExpr> field = New<ASTExpr>();
             field->op = ASTExpr::AGGLITERALFIELD;
-            field->ident.reset(new ASTIdent());
+            field->ident = New<ASTIdent>();
             if (!ParseIdent(field->ident.get())) {
                 return astnull<ASTExpr>();
             }

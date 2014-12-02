@@ -18,6 +18,7 @@ set(FRONTEND_SRCS
     frontend/parser.cc
     frontend/ast.cc
     frontend/visitor.cc
+    frontend/func-inline.cc
     frontend/codegen.cc
     frontend/compiler.cc
     frontend/cmdline-driver.cc)

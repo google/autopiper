@@ -18,6 +18,7 @@
 #define _AUTOPIPER_FRONTEND_AST_H_
 
 #include <vector>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -25,6 +26,12 @@
 
 namespace autopiper {
 namespace frontend {
+
+// TODO: the whole AST structure should be representable as a tree of
+// protobufs. This gives us dup and pretty-print for free. Visiting and
+// rewriting still requires some machinery but we could probably write some
+// reflection-based magic for this (including e.g. well-known field names for
+// source location and other metadata of each node).
 
 template<typename T>
 using ASTVector = std::vector<std::unique_ptr<T>>;
@@ -36,6 +43,12 @@ template<typename T>
 ASTRef<T> astnull() { return std::unique_ptr<T>(nullptr); }
 
 typedef Token::bignum ASTBignum;
+
+struct ASTBase {
+    autopiper::Location loc;
+
+    ASTBase() { loc.line = 0; loc.column = 0; loc.filename = "(internal)"; }
+};
 
 struct AST;
 struct ASTFunctionDef;
@@ -55,17 +68,21 @@ struct ASTStmtBreak;
 struct ASTStmtContinue;
 struct ASTStmtWrite;
 struct ASTStmtSpawn;
+struct ASTStmtReturn;
 
 struct ASTExpr;
 
 struct ASTTypeField;
 
-struct AST {
+struct AST : public ASTBase {
+    int gencounter;
     ASTVector<ASTFunctionDef> functions;
     ASTVector<ASTTypeDef> types;
+
+    AST() : gencounter(0) {}
 };
 
-struct ASTFunctionDef {
+struct ASTFunctionDef : public ASTBase {
     ASTRef<ASTIdent> name;
     ASTRef<ASTType> return_type;
     ASTVector<ASTParam> params;
@@ -75,22 +92,22 @@ struct ASTFunctionDef {
     ASTFunctionDef() : is_entry(false)  {}
 };
 
-struct ASTParam {
+struct ASTParam : public ASTBase {
     ASTRef<ASTIdent> ident;
     ASTRef<ASTType> type;
 };
 
-struct ASTTypeDef {
+struct ASTTypeDef : public ASTBase {
     ASTRef<ASTIdent> ident;
     ASTVector<ASTTypeField> fields;
 };
 
-struct ASTTypeField {
+struct ASTTypeField : public ASTBase {
     ASTRef<ASTIdent> ident;
     ASTRef<ASTType> type;
 };
 
-struct ASTIdent {
+struct ASTIdent : public ASTBase {
     std::string name;
 
     enum Type {
@@ -103,7 +120,7 @@ struct ASTIdent {
     Type type;
 };
 
-struct ASTType {
+struct ASTType : public ASTBase {
     ASTRef<ASTIdent> ident;
     bool is_port;
 
@@ -112,7 +129,7 @@ struct ASTType {
     ASTType() : is_port(false), def(nullptr)  {}
 };
 
-struct ASTStmt {
+struct ASTStmt : public ASTBase {
     ASTRef<ASTStmtBlock> block;
     ASTRef<ASTStmtLet> let;
     ASTRef<ASTStmtAssign> assign;
@@ -122,57 +139,67 @@ struct ASTStmt {
     ASTRef<ASTStmtContinue> continue_;
     ASTRef<ASTStmtWrite> write;
     ASTRef<ASTStmtSpawn> spawn;
+    ASTRef<ASTStmtReturn> return_;
 };
 
-struct ASTStmtBlock {
+struct ASTStmtBlock : public ASTBase {
     ASTVector<ASTStmt> stmts;
 };
 
-struct ASTStmtLet {
+struct ASTStmtLet : public ASTBase {
     ASTRef<ASTIdent> lhs;
     ASTRef<ASTType> type;
     ASTRef<ASTExpr> rhs;
 };
 
-struct ASTStmtAssign {
+struct ASTStmtAssign : public ASTBase {
     // TODO: support array and type-field refs on LHS.
     ASTRef<ASTIdent> lhs;
     ASTRef<ASTExpr> rhs;
 };
 
-struct ASTStmtIf {
+struct ASTStmtIf : public ASTBase {
     ASTRef<ASTExpr> condition;
     ASTRef<ASTStmt> if_body;
     ASTRef<ASTStmt> else_body;
 };
 
-struct ASTStmtWhile {
+struct ASTStmtWhile : public ASTBase {
     ASTRef<ASTExpr> condition;
     ASTRef<ASTStmt> body;
+    ASTRef<ASTIdent> label;  // optional; can't be specified by user.
 };
 
-struct ASTStmtBreak {
+struct ASTStmtBreak : public ASTBase {
     ASTStmtWhile* enclosing_while;  // filled in later, after parse
 
     ASTStmtBreak() : enclosing_while(nullptr)  {}
+
+    ASTRef<ASTIdent> label;  // optional; can't be specified by user.
 };
 
-struct ASTStmtContinue {
+struct ASTStmtContinue : public ASTBase {
     ASTStmtWhile* enclosing_while;  // filled in later, after parse
 
     ASTStmtContinue() : enclosing_while(nullptr)  {}
+
+    ASTRef<ASTIdent> label;  // optional; can't be specified by user.
 };
 
-struct ASTStmtWrite {
+struct ASTStmtWrite : public ASTBase {
     ASTRef<ASTIdent> port;
     ASTRef<ASTExpr> rhs;
 };
 
-struct ASTStmtSpawn {
+struct ASTStmtSpawn : public ASTBase {
     ASTRef<ASTStmt> body;
 };
 
-struct ASTExpr {
+struct ASTStmtReturn : public ASTBase {
+    ASTRef<ASTExpr> value;
+};
+
+struct ASTExpr : public ASTBase {
     enum Op {
         ADD,
         SUB,
@@ -226,31 +253,59 @@ struct ASTExpr {
 
 template<typename T>
 void PrintAST(const T* node, std::ostream& out, int indent = 0);
+template<typename T>
+ASTRef<T> CloneAST(const T* node);
 
-#define AST_PRINTER(type)                                                     \
+#define AST_METHODS(type)                                                     \
     template<>                                                                \
-    void PrintAST<type>(const type* node, std::ostream& out, int indent)  \
+    void PrintAST<type>(const type* node, std::ostream& out, int indent);     \
+    template<>                                                                \
+    ASTRef<type> CloneAST<type>(const type* node)                             \
 
-AST_PRINTER(AST);
-AST_PRINTER(ASTFunctionDef);
-AST_PRINTER(ASTTypeDef);
-AST_PRINTER(ASTIdent);
-AST_PRINTER(ASTType);
-AST_PRINTER(ASTParam);
-AST_PRINTER(ASTStmt);
-AST_PRINTER(ASTStmtBlock);
-AST_PRINTER(ASTStmtLet);
-AST_PRINTER(ASTStmtAssign);
-AST_PRINTER(ASTStmtIf);
-AST_PRINTER(ASTStmtWhile);
-AST_PRINTER(ASTStmtBreak);
-AST_PRINTER(ASTStmtContinue);
-AST_PRINTER(ASTStmtWrite);
-AST_PRINTER(ASTStmtSpawn);
-AST_PRINTER(ASTExpr);
-AST_PRINTER(ASTTypeField);
+AST_METHODS(AST);
+AST_METHODS(ASTFunctionDef);
+AST_METHODS(ASTTypeDef);
+AST_METHODS(ASTIdent);
+AST_METHODS(ASTType);
+AST_METHODS(ASTParam);
+AST_METHODS(ASTStmt);
+AST_METHODS(ASTStmtBlock);
+AST_METHODS(ASTStmtLet);
+AST_METHODS(ASTStmtAssign);
+AST_METHODS(ASTStmtIf);
+AST_METHODS(ASTStmtWhile);
+AST_METHODS(ASTStmtBreak);
+AST_METHODS(ASTStmtContinue);
+AST_METHODS(ASTStmtWrite);
+AST_METHODS(ASTStmtSpawn);
+AST_METHODS(ASTStmtReturn);
+AST_METHODS(ASTExpr);
+AST_METHODS(ASTTypeField);
 
-#undef AST_PRINTER
+#undef AST_METHODS
+
+// ----------------- Utility functions. ----------------------
+
+// Generate a new ASTIdent with a unique name (based on gencounter).
+ASTRef<ASTIdent> ASTGenSym(AST* ast);
+
+// Insert zero or more statements into block |parent| before node |before| (or
+// at the end, if |before| is null). Returns iterators to the first and one
+// past the last statement in the parent block's list of statements.
+std::pair<ASTVector<ASTStmt>::const_iterator,
+          ASTVector<ASTStmt>::const_iterator>
+ASTInsertStmts(ASTStmtBlock* parent,
+    const ASTStmt* before,
+    ASTVector<ASTStmt>&& stmts);
+
+// Define a new temp in block |parent|, with given |initial_value|, returning
+// both a pointer to its identifier and an owning pointer to an expression that
+// may be cloned to use it.
+std::pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
+        AST* ast,
+        ASTStmtBlock* parent,
+        const ASTStmt* before,
+        ASTRef<ASTExpr> initial_value);
 
 }  // namespace frontend
 }  // namespace autopiper

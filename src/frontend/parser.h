@@ -37,6 +37,8 @@ class Parser : public ParserBase {
         bool Parse(AST* ast);
 
     protected:
+        template<typename T> ASTRef<T> New();
+
         bool ParseFuncDef(ASTFunctionDef* def);
         bool ParseFuncArgList(ASTFunctionDef* def);
 
@@ -57,6 +59,7 @@ class Parser : public ParserBase {
         bool ParseStmtContinue(ASTStmtContinue* continue_);
         bool ParseStmtWrite(ASTStmtWrite* write);
         bool ParseStmtSpawn(ASTStmtSpawn* spawn);
+        bool ParseStmtReturn(ASTStmtReturn* return_);
 
         ASTRef<ASTExpr>  ParseExpr();
         ASTRef<ASTExpr>  ParseExprGroup1();   // group 1:  ternary op  (?:)

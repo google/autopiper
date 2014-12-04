@@ -21,15 +21,6 @@ using namespace std;
 namespace autopiper {
 namespace frontend {
 
-bool ASTVisitor::Visit(const AST* ast, ASTVisitorContext* context) const {
-    return VisitAST(ast, context);
-}
-
-ASTRef<AST> ASTVisitor::Modify(ASTRef<AST> ast, ASTVisitorContext* context)
-    const {
-    return ModifyAST(move(ast), context);
-}
-
 // ---------------------- visitor methods --------------------
 
 #define VISIT(type, visit_code)                                     \
@@ -95,6 +86,7 @@ VISIT(ASTStmt, {
     T(write, Write)
     T(spawn, Spawn)
     T(return_, Return)
+    T(expr, Expr)
 })
 
 #undef T
@@ -159,6 +151,10 @@ VISIT(ASTStmtReturn, {
     CHECK(VisitASTExpr(node->value.get(), context));
 })
 
+VISIT(ASTStmtExpr, {
+    CHECK(VisitASTExpr(node->expr.get(), context));
+})
+
 VISIT(ASTExpr, {
     for (auto& op : node->ops) {
         CHECK(VisitASTExpr(op.get(), context));
@@ -181,71 +177,64 @@ VISIT(ASTTypeField, {
 
 // ------------------- modify methods ------------------------
 
-#define MODIFY(type, code_block)                                     \
-    ASTRef<type> ASTVisitor::Modify ## type(ASTRef<type> node,       \
-        ASTVisitorContext* context) const {                          \
-        node = context->Modify ## type ## Pre (move(node));          \
-        if (!node) return node;                                      \
-        code_block                                                   \
-        node = context->Modify ## type ## Post(move(node));          \
-        return node;                                                 \
+#define MODIFY(type, code_block)                                           \
+    bool ASTVisitor::Modify ## type(ASTRef<type>& node,                    \
+        ASTVisitorContext* context) const {                                \
+        if (!context->Modify ## type ## Pre (node)) {                      \
+            return false;                                                  \
+        }                                                                  \
+        code_block                                                         \
+        if (!context->Modify ## type ## Post(node)) {                      \
+            return false;                                                  \
+        }                                                                  \
+        return true;                                                       \
     }
 
-#define CHECK(dest, value) do {                                      \
-    dest = value;                                                    \
-    if (!dest) return nullptr;                                       \
+#define FIELD(dest, type) do {                                       \
+    if (!Modify ## type(dest, context)) {                            \
+        return false;                                                \
+    }                                                                \
 } while (0)
 
 MODIFY(AST, {
     for (int i = 0; i < node->types.size(); i++) {
-        CHECK(node->types[i],
-                ModifyASTTypeDef(move(node->types[i]), context));
+        FIELD(node->types[i], ASTTypeDef);
     }
     for (int i = 0; i < node->functions.size(); i++) {
-        CHECK(node->functions[i],
-                ModifyASTFunctionDef(move(node->functions[i]), context));
+        FIELD(node->functions[i], ASTFunctionDef);
     }
 })
 
 MODIFY(ASTFunctionDef, {
-    CHECK(node->name, ModifyASTIdent(move(node->name), context));
-    CHECK(node->return_type,
-            ModifyASTType(move(node->return_type), context));
+    FIELD(node->name, ASTIdent);
+    FIELD(node->return_type, ASTType);
     for (int i = 0; i < node->params.size(); i++) {
-        CHECK(node->params[i],
-                ModifyASTParam(move(node->params[i]), context));
+        FIELD(node->params[i], ASTParam);
     }
-    CHECK(node->block,
-            ModifyASTStmtBlock(move(node->block), context));
+    FIELD(node->block, ASTStmtBlock);
 })
 
 MODIFY(ASTTypeDef, {
-    CHECK(node->ident,
-            ModifyASTIdent(move(node->ident), context));
+    FIELD(node->ident, ASTIdent);
     for (int i = 0; i < node->fields.size(); i++) {
-        CHECK(node->fields[i],
-                ModifyASTTypeField(move(node->fields[i]), context));
+        FIELD(node->fields[i], ASTTypeField);
     }
 })
 
 MODIFY(ASTIdent, {})  // no subnodes
 
 MODIFY(ASTType, {
-    CHECK(node->ident,
-            ModifyASTIdent(move(node->ident), context));
+    FIELD(node->ident, ASTIdent);
 })
 
 MODIFY(ASTParam, {
-    CHECK(node->ident,
-            ModifyASTIdent(move(node->ident), context));
-    CHECK(node->type,
-            ModifyASTType(move(node->type), context));
+    FIELD(node->ident, ASTIdent);
+    FIELD(node->type, ASTType);
 })
 
 #define T(field, type)                                                  \
-        if (node-> field ) {                                            \
-            CHECK(node-> field,                                         \
-                    ModifyASTStmt ## type(move(node->field), context)); \
+        if (node->field) {                                              \
+            FIELD(node->field, ASTStmt ## type);                        \
         }
 
 MODIFY(ASTStmt, {
@@ -259,108 +248,90 @@ MODIFY(ASTStmt, {
     T(write, Write)
     T(spawn, Spawn)
     T(return_, Return)
+    T(expr, Expr)
 })
 
 #undef T
 
 MODIFY(ASTStmtBlock, {
     for (int i = 0; i < node->stmts.size(); i++) {
-        CHECK(node->stmts[i],
-                ModifyASTStmt(move(node->stmts[i]), context));
+        FIELD(node->stmts[i], ASTStmt);
     }
 })
 
 MODIFY(ASTStmtLet, {
-    CHECK(node->lhs,
-            ModifyASTIdent(move(node->lhs), context));
+    FIELD(node->lhs, ASTIdent);
     if (node->type) {
-        CHECK(node->type,
-                ModifyASTType(move(node->type), context));
+        FIELD(node->type, ASTType);
     }
-    CHECK(node->rhs,
-            ModifyASTExpr(move(node->rhs), context));
+    FIELD(node->rhs, ASTExpr);
 })
 
 MODIFY(ASTStmtAssign, {
-    CHECK(node->lhs,
-            ModifyASTIdent(move(node->lhs), context));
-    CHECK(node->rhs,
-            ModifyASTExpr(move(node->rhs), context));
+    FIELD(node->lhs, ASTIdent);
+    FIELD(node->rhs, ASTExpr);
 })
 
 MODIFY(ASTStmtIf, {
-    CHECK(node->condition,
-            ModifyASTExpr(move(node->condition), context));
-    CHECK(node->if_body,
-            ModifyASTStmt(move(node->if_body), context));
+    FIELD(node->condition, ASTExpr);
+    FIELD(node->if_body, ASTStmt);
     if (node->else_body) {
-        CHECK(node->else_body,
-                ModifyASTStmt(move(node->else_body), context));
+        FIELD(node->else_body, ASTStmt);
     }
 })
 
 MODIFY(ASTStmtWhile, {
-    CHECK(node->condition,
-            ModifyASTExpr(move(node->condition), context));
-    CHECK(node->body,
-            ModifyASTStmt(move(node->body), context));
+    FIELD(node->condition, ASTExpr);
+    FIELD(node->body, ASTStmt);
     if (node->label) {
-        CHECK(node->label,
-                ModifyASTIdent(move(node->label), context));
+        FIELD(node->label, ASTIdent);
     }
 })
 
 MODIFY(ASTStmtBreak, {
     if (node->label) {
-        CHECK(node->label,
-                ModifyASTIdent(move(node->label), context));
+        FIELD(node->label, ASTIdent);
     }
 })
 
 MODIFY(ASTStmtContinue, {
     if (node->label) {
-        CHECK(node->label,
-                ModifyASTIdent(move(node->label), context));
+        FIELD(node->label, ASTIdent);
     }
 })
 
 MODIFY(ASTStmtWrite, {
-    CHECK(node->port,
-            ModifyASTIdent(move(node->port), context));
-    CHECK(node->rhs,
-            ModifyASTExpr(move(node->rhs), context));
+    FIELD(node->port, ASTIdent);
+    FIELD(node->rhs, ASTExpr);
 })
 
 MODIFY(ASTStmtSpawn, {
-    CHECK(node->body,
-            ModifyASTStmt(move(node->body), context));
+    FIELD(node->body, ASTStmt);
 })
 
 MODIFY(ASTStmtReturn, {
-    CHECK(node->value,
-            ModifyASTExpr(move(node->value), context));
+    FIELD(node->value, ASTExpr);
+})
+
+MODIFY(ASTStmtExpr, {
+    FIELD(node->expr, ASTExpr);
 })
 
 MODIFY(ASTExpr, {
     for (int i = 0; i < node->ops.size(); i++) {
-        CHECK(node->ops[i],
-                ModifyASTExpr(move(node->ops[i]), context));
+        FIELD(node->ops[i], ASTExpr);
     }
     if (node->ident) {
-        CHECK(node->ident,
-                ModifyASTIdent(move(node->ident), context));
+        FIELD(node->ident, ASTIdent);
     }
     if (node->type) {
-        CHECK(node->type,
-                ModifyASTType(move(node->type), context));
+        FIELD(node->type, ASTType);
     }
 })
 
 MODIFY(ASTTypeField, {
-    CHECK(node->ident,
-            ModifyASTIdent(move(node->ident), context));
-    CHECK(node->type,
-            ModifyASTType(move(node->type), context));
+    FIELD(node->ident, ASTIdent);
+    FIELD(node->type, ASTType);
 })
 
 }  // namespace frontend

@@ -31,6 +31,9 @@ class Compiler : public boost::noncopyable {
         ~Compiler() { }
 
         struct Options {
+            // Print AST after parsing.
+            bool print_ast_orig;
+
             // Print AST before doing codegen.
             bool print_ast;
 
@@ -50,7 +53,8 @@ class Compiler : public boost::noncopyable {
             std::string output;
 
             Options()
-                : print_ast(false)
+                : print_ast_orig(false)
+                , print_ast(false)
                 , print_ir(false)
                 , print_lowered(false)
             { }

@@ -69,6 +69,7 @@ struct ASTStmtContinue;
 struct ASTStmtWrite;
 struct ASTStmtSpawn;
 struct ASTStmtReturn;
+struct ASTStmtExpr;
 
 struct ASTExpr;
 
@@ -140,6 +141,11 @@ struct ASTStmt : public ASTBase {
     ASTRef<ASTStmtWrite> write;
     ASTRef<ASTStmtSpawn> spawn;
     ASTRef<ASTStmtReturn> return_;
+    ASTRef<ASTStmtExpr> expr;
+};
+
+struct ASTStmtExpr : public ASTBase {
+    ASTRef<ASTExpr> expr;
 };
 
 struct ASTStmtBlock : public ASTBase {
@@ -235,6 +241,8 @@ struct ASTExpr : public ASTBase {
 
         PORTREAD,
         PORTDEF,
+
+        STMTBLOCK,  // must end in an ASTStmtExpr
     };
 
     Op op;
@@ -244,6 +252,8 @@ struct ASTExpr : public ASTBase {
     ASTBignum constant;
 
     ASTRef<ASTType> type;  // inferred; not from parser
+
+    ASTRef<ASTStmtBlock> stmt;
 
     ASTExpr() : op(CONST)  {}
     ASTExpr(ASTBignum constant_)
@@ -279,6 +289,7 @@ AST_METHODS(ASTStmtContinue);
 AST_METHODS(ASTStmtWrite);
 AST_METHODS(ASTStmtSpawn);
 AST_METHODS(ASTStmtReturn);
+AST_METHODS(ASTStmtExpr);
 AST_METHODS(ASTExpr);
 AST_METHODS(ASTTypeField);
 
@@ -289,22 +300,12 @@ AST_METHODS(ASTTypeField);
 // Generate a new ASTIdent with a unique name (based on gencounter).
 ASTRef<ASTIdent> ASTGenSym(AST* ast);
 
-// Insert zero or more statements into block |parent| before node |before| (or
-// at the end, if |before| is null). Returns iterators to the first and one
-// past the last statement in the parent block's list of statements.
-std::pair<ASTVector<ASTStmt>::const_iterator,
-          ASTVector<ASTStmt>::const_iterator>
-ASTInsertStmts(ASTStmtBlock* parent,
-    const ASTStmt* before,
-    ASTVector<ASTStmt>&& stmts);
-
 // Define a new temp in block |parent|, with given |initial_value|, returning
 // both a pointer to its identifier and an owning pointer to an expression that
 // may be cloned to use it.
 std::pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
         AST* ast,
         ASTStmtBlock* parent,
-        const ASTStmt* before,
         ASTRef<ASTExpr> initial_value);
 
 }  // namespace frontend

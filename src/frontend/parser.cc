@@ -117,6 +117,11 @@ bool Parser::ParseFuncArgList(ASTFunctionDef* def) {
         if (CurToken().type == Token::RPAREN) {
             break;
         }
+        if (!def->params.empty()) {
+            if (!Consume(Token::COMMA)) {
+                return false;
+            }
+        }
 
         ASTRef<ASTParam> param = New<ASTParam>();
         param->ident = New<ASTIdent>();
@@ -131,6 +136,7 @@ bool Parser::ParseFuncArgList(ASTFunctionDef* def) {
         if (!ParseType(param->type.get())) {
             return false;
         }
+        def->params.push_back(move(param));
     }
 
     return true;
@@ -374,7 +380,10 @@ bool Parser::ParseStmtSpawn(ASTStmtSpawn* spawn) {
 
 bool Parser::ParseStmtReturn(ASTStmtReturn* return_) {
     return_->value = ParseExpr();
-    return return_->value != nullptr;
+    if (!return_->value) {
+        return false;
+    }
+    return Consume(Token::SEMICOLON);
 }
 
 ASTRef<ASTExpr> Parser::ParseExpr() {
@@ -629,7 +638,7 @@ ASTRef<ASTExpr> Parser::ParseExprGroup11() {
 
             ASTRef<ASTExpr> func_call = New<ASTExpr>();
             func_call->op = ASTExpr::FUNCCALL;
-            func_call->ops.push_back(move(op));
+            func_call->ident = move(op->ident);
             for (auto& arg : args) {
                 func_call->ops.push_back(move(arg));
             }

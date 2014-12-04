@@ -40,50 +40,40 @@ namespace frontend {
 class FuncInlinePass : public ASTVisitorContext {
     public:
         FuncInlinePass(autopiper::ErrorCollector* coll);
-    protected:
 
+        static bool Transform(ASTRef<AST>& node,
+                              autopiper::ErrorCollector* coll) {
+            ASTVisitor visitor;
+            FuncInlinePass pass(coll);
+            if (!visitor.VisitAST(node.get(), &pass)) {
+                return false;
+            }
+            if (!visitor.ModifyAST(node, &pass)) {
+                return false;
+            }
+            return true;
+        }
+
+    protected:
         // Visit pass -- make note of all function defs.
         virtual bool VisitASTFunctionDefPre(
                 const ASTFunctionDef* node);
-        // Visit pass -- make note of all stmts that contain function calls.
-        virtual bool VisitASTStmtPre(const ASTStmt* node);
-        virtual bool VisitASTExprPre(const ASTExpr* node);
 
-        // To do the modification, we have (i) a pre-pass on ASTStmt that wraps
-        // any stmt containing a function call in a block, recording the
-        // statement->parent block mapping, and (ii) a post-pass on ASTExpr
-        // that prepends the function body for the called function, if any,
-        // within the enclosing stmt's block, rewriting the expr to a use of
-        // the return-value variable.
-        virtual ASTRef<ASTStmt> ModifyASTStmtPost(ASTRef<ASTStmt> node);
-        virtual ASTRef<ASTExpr> ModifyASTExprPost(ASTRef<ASTExpr> node);
-
-        // Grab a pointer to each statement when we enter it, and record each
-        // expr's parent statement.
-        virtual ASTRef<ASTStmt> ModifyASTStmtPre(ASTRef<ASTStmt> node);
-        virtual ASTRef<ASTExpr> ModifyASTExprPre(ASTRef<ASTExpr> node);
+        // To do the modification, we have a post-pass on ASTExpr
+        // that replaces a function call expr with a statement-block expr whose
+        // body is a modified version of the called function's body, using a
+        // while-loop pattern with break statements and assignments to a
+        // temporary return value variable to desugar 'return' statements.
+        virtual bool ModifyASTExprPost(ASTRef<ASTExpr>& node);
 
         // Grab a pointer to the AST so we can gensym new temps.
-        virtual ASTRef<AST> ModifyASTPre(ASTRef<AST> node) {
+        virtual bool ModifyASTPre(ASTRef<AST>& node) {
             ast_ = node.get();
-            return node;
+            return true;
         }
     private:
-        // Set of all ASTStmts that contain exprs with function calls.
-        std::set<const ASTStmt*> stmts_containing_func_calls_;
         // map from function names to ASTFunctionDefs.
         std::map<const std::string, const ASTFunctionDef*> function_defs_;
-        // map from callsite (ASTExpr) to function def.
-        std::map<const ASTExpr*, const ASTFunctionDef*> function_calls_;
-        // map from statements in stmts_containing_func_calls_ set to their
-        // inserted surrounding blocks.
-        std::map<const ASTStmt*, ASTStmtBlock*> parent_block_map_;
-        // map from exprs to their immediate stmt parents.
-        std::map<const ASTExpr*, ASTStmt*> expr_parent_;
-
-        // Visit pass: are we inside a stmt?
-        const ASTStmt* visit_in_stmt_;
-        ASTStmt* modify_in_stmt_;
 
         AST* ast_;
 };

@@ -118,7 +118,7 @@ AST_PRINTER(ASTParam) {
 }
 
 AST_PRINTER(ASTStmt) {
-    out << I(0) << "(stmt" << endl;
+    out << I(0) << "(stmt " << node << endl;
 #define T(type)                 \
     if (node->type)             \
         P(node->type.get(), 1)
@@ -131,7 +131,10 @@ AST_PRINTER(ASTStmt) {
     T(continue_);
     T(write);
     T(spawn);
+    T(return_);
+    T(expr);
 #undef T
+    out << I(0) << ")" << endl;
 }
 
 AST_PRINTER(ASTStmtBlock) {
@@ -231,14 +234,20 @@ AST_PRINTER(ASTStmtWrite) {
 }
 
 AST_PRINTER(ASTStmtSpawn) {
-    out << I(0) << "(spawn" << endl;
+    out << I(0) << "(stmt-spawn" << endl;
     P(node->body.get(), 1);
     out << I(0) << ")" << endl;
 }
 
 AST_PRINTER(ASTStmtReturn) {
-    out << I(0) << "(return" << endl;
+    out << I(0) << "(stmt-return" << endl;
     P(node->value.get(), 1);
+    out << I(0) << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtExpr) {
+    out << I(0) << "(stmt-expr" << endl;
+    P(node->expr.get(), 1);
     out << I(0) << ")" << endl;
 }
 
@@ -283,6 +292,8 @@ AST_PRINTER(ASTExpr) {
 
         T(PORTREAD);
         T(PORTDEF);
+
+        T(STMTBLOCK);
 #undef T
     }
 
@@ -301,6 +312,12 @@ AST_PRINTER(ASTExpr) {
         P(op.get(), 2);
         out << I(1) << ")" << endl;
     }
+    if (node->stmt) {
+        out << I(1) << "(stmt" << endl;
+        P(node->stmt.get(), 2);
+        out << I(1) << ")" << endl;
+    }
+    out << I(0) << ")" << endl;
 }
 
 AST_PRINTER(ASTTypeField) {
@@ -332,7 +349,7 @@ ASTVector<T> CloneVec(const ASTVector<T>& orig) {
 #define SETUP(type)                                                           \
     ASTRef<type> ret(new type());                                             \
     ret->loc = node->loc
-#define SUB(name) ret->name = CloneAST(node->name.get())
+#define SUB(name) if (node->name) ret->name = CloneAST(node->name.get())
 #define PRIM(name) ret->name = node->name
 #define VEC(name) ret->name = CloneVec(node->name)
 
@@ -392,6 +409,8 @@ AST_CLONE(ASTStmt) {
     SUB(continue_);
     SUB(write);
     SUB(spawn);
+    SUB(return_);
+    SUB(expr);
     return ret;
 }
 
@@ -463,6 +482,12 @@ AST_CLONE(ASTStmtReturn) {
     return ret;
 }
 
+AST_CLONE(ASTStmtExpr) {
+    SETUP(ASTStmtExpr);
+    SUB(expr);
+    return ret;
+}
+
 AST_CLONE(ASTExpr) {
     SETUP(ASTExpr);
     PRIM(op);
@@ -491,44 +516,9 @@ ASTRef<ASTIdent> ASTGenSym(AST* ast) {
     return ret;
 }
 
-pair<ASTVector<ASTStmt>::const_iterator,
-     ASTVector<ASTStmt>::const_iterator>
-ASTInsertStmts(ASTStmtBlock* parent,
-               const ASTStmt* before,
-               ASTVector<ASTStmt>&& stmts) {
-    if (!before) {
-        // Efficient special case: append at end.
-        auto begin_it = parent->stmts.cbegin();
-        for (auto& stmt : stmts) {
-            parent->stmts.push_back(move(stmt));
-        }
-        return make_pair(begin_it, parent->stmts.end());
-    } else {
-        // General case: build the new vector then swap it in.
-        ASTVector<ASTStmt> ret;
-        int start_idx = -1;
-        int end_idx = -1;
-        for (auto& stmt : parent->stmts) {
-            if (stmt.get() == before) {
-                start_idx = ret.size();
-                for (auto& new_stmt : stmts) {
-                    ret.push_back(move(new_stmt));
-                }
-                end_idx = ret.size();
-            }
-            ret.push_back(move(stmt));
-        }
-        parent->stmts.swap(ret);
-        assert(start_idx != -1);
-        return make_pair(parent->stmts.cbegin() + start_idx,
-                         parent->stmts.cbegin() + end_idx);
-    }
-}
-
 pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
     AST* ast,
     ASTStmtBlock* parent,
-    const ASTStmt* before,
     ASTRef<ASTExpr> initial_value) {
 
     ASTRef<ASTStmtLet> let_stmt(new ASTStmtLet());
@@ -536,16 +526,16 @@ pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
     let_stmt->lhs = ASTGenSym(ast);
     let_stmt->rhs = move(initial_value);
     ASTRef<ASTStmt> stmt_box(new ASTStmt());
+    const ASTIdent* temp_ident = let_stmt->lhs.get();
     stmt_box->let = move(let_stmt);
-
-    ASTVector<ASTStmt> stmts;
-    stmts.push_back(move(stmt_box));
-    ASTInsertStmts(parent, before, move(stmts));
 
     ASTRef<ASTExpr> ref_expr(new ASTExpr());
     ref_expr->op = ASTExpr::VAR;
     ref_expr->ident = CloneAST(stmt_box->let->lhs.get());
-    return make_pair(let_stmt->lhs.get(), move(ref_expr));
+
+    parent->stmts.push_back(move(stmt_box));
+
+    return make_pair(temp_ident, move(ref_expr));
 }
 
 }  // namespace frontend

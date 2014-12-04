@@ -16,6 +16,7 @@
 
 #include "frontend/func-inline.h"
 #include "common/util.h"
+#include "common/exception.h"
 
 using namespace std;
 
@@ -23,58 +24,12 @@ namespace autopiper {
 namespace frontend {
 
 FuncInlinePass::FuncInlinePass(autopiper::ErrorCollector* coll)
-    : ASTVisitorContext(coll), visit_in_stmt_(nullptr)
+    : ASTVisitorContext(coll)
 { }
 
 bool FuncInlinePass::VisitASTFunctionDefPre(const ASTFunctionDef* node) {
     function_defs_.insert(make_pair(node->name->name, node));
     return true;
-}
-
-bool FuncInlinePass::VisitASTStmtPre(const ASTStmt* node) {
-    visit_in_stmt_ = node;
-    return true;
-}
-
-bool FuncInlinePass::VisitASTExprPre(const ASTExpr* node) {
-    if (node->op == ASTExpr::FUNCCALL) {
-        const string& name = node->ident->name;
-        auto it = function_defs_.find(name);
-        if (it == function_defs_.end()) {
-            Error(node, strprintf("No such function: %s", name.c_str()));
-            return false;
-        }
-        function_calls_.insert(make_pair(node, it->second));
-        stmts_containing_func_calls_.insert(visit_in_stmt_);
-    }
-    return true;
-}
-
-ASTRef<ASTStmt> FuncInlinePass::ModifyASTStmtPre(ASTRef<ASTStmt> node) {
-    modify_in_stmt_ = node.get();
-    return node;
-}
-
-ASTRef<ASTExpr> FuncInlinePass::ModifyASTExprPre(ASTRef<ASTExpr> node) {
-    expr_parent_[node.get()] = modify_in_stmt_;
-    return node;
-}
-
-ASTRef<ASTStmt> FuncInlinePass::ModifyASTStmtPost(ASTRef<ASTStmt> node) {
-    // If this statement contains a function call, ensure it's wrapped in a
-    // block into which we can inline the function body.
-    if (stmts_containing_func_calls_.find(node.get()) !=
-        stmts_containing_func_calls_.end()) {
-        ASTRef<ASTStmtBlock> block(new ASTStmtBlock());
-        parent_block_map_.insert(make_pair(node.get(), block.get()));
-        block->stmts.push_back(move(node));
-
-        ASTRef<ASTStmt> box(new ASTStmt());
-        box->block = move(block);
-        return box;
-    } else {
-        return node;
-    }
 }
 
 namespace {
@@ -89,8 +44,13 @@ class ArgsReturnReplacer : public ASTVisitorContext {
               return_var_(return_var), while_label_(while_label)
         {}
 
-        virtual ASTRef<ASTStmt> ModifyASTStmtPost(ASTRef<ASTStmt> node) {
+        virtual bool ModifyASTStmtPost(ASTRef<ASTStmt>& node) {
             if (node->return_) {
+                // Replace a "return <expr>" statement with this:
+                // {
+                //     return_value = <expr>;
+                //     break <body-while-wrapper>;
+                // }
                 ASTRef<ASTStmtBlock> block(new ASTStmtBlock());
                 ASTRef<ASTStmtAssign> assign(new ASTStmtAssign());
                 ASTRef<ASTStmtBreak> break_(new ASTStmtBreak());
@@ -107,10 +67,9 @@ class ArgsReturnReplacer : public ASTVisitorContext {
 
                 ASTRef<ASTStmt> block_box(new ASTStmt());
                 block_box->block = move(block);
-                return block_box;
-            } else {
-                return node;
+                node = move(block_box);
             }
+            return true;
         }
 
         void AddArgLets(ASTStmtBlock* parent) {
@@ -120,15 +79,11 @@ class ArgsReturnReplacer : public ASTVisitorContext {
                 ASTRef<ASTStmtLet> let_stmt(new ASTStmtLet());
                 let_stmt->lhs = CloneAST(param->ident.get());
                 let_stmt->rhs = move(args_[i++]);
+                let_stmt->type = CloneAST(param->type.get());
                 ASTRef<ASTStmt> box(new ASTStmt());
                 box->let =  move(let_stmt);
-                lets.push_back(move(box));
+                parent->stmts.push_back(move(box));
             }
-
-            ASTInsertStmts(parent,
-                    // insert at beginning
-                    parent->stmts.empty() ? nullptr : parent->stmts[0].get(),
-                    move(lets));
         }
 
     private:
@@ -141,14 +96,14 @@ class ArgsReturnReplacer : public ASTVisitorContext {
 bool InlineFunctionBody(
         AST* ast,
         const ASTFunctionDef* func,
+        ASTExpr* call_expr,
         ASTStmtBlock* parent_block,
-        ASTStmt* before,
         const ASTIdent* return_var_ident,
         ASTVector<ASTExpr>&& args,
         ErrorCollector* coll) {
     // Ensure arg count matches.
     if (args.size() != func->params.size()) {
-        coll->ReportError(before->loc, autopiper::ErrorCollector::ERROR,
+        coll->ReportError(call_expr->loc, autopiper::ErrorCollector::ERROR,
                 "Function call arity mismatch");
         return false;
     }
@@ -158,56 +113,84 @@ bool InlineFunctionBody(
     while_stmt->label = ASTGenSym(ast);
     while_stmt->condition.reset(new ASTExpr(1));
     while_stmt->body.reset(new ASTStmt());
-    while_stmt->body->block = CloneAST(func->block.get());
-    ASTRef<ASTStmt> break_stmt;
+    while_stmt->body->block.reset(new ASTStmtBlock());
+
+    // Start with a sequence of let-statements that define arg values as locals
+    // (ordinary lexical scope resolution will then see these when used by the
+    // function body).
+    ASTVisitor visitor;
+    ArgsReturnReplacer replacer(
+            func, move(args),
+            return_var_ident, while_stmt->label.get());
+    replacer.AddArgLets(while_stmt->body->block.get());
+
+    // Insert clones of the function body's statements.
+    for (auto& body_stmt : func->block->stmts) {
+        while_stmt->body->block->stmts.push_back(CloneAST(body_stmt.get()));
+    }
+
+    // Replace all 'return' stmts in function body with assignment to return
+    // value variable and a labeled break.
+    if (!visitor.ModifyASTStmtBlock(while_stmt->body->block, &replacer)) {
+        return false;
+    }
+
+    // End with a break statement to exit the enclosing while. This occurs if
+    // control falls through the end of the function without an explicit
+    // 'return'.
+    ASTRef<ASTStmt> break_stmt(new ASTStmt());
     break_stmt->break_.reset(new ASTStmtBreak());
     break_stmt->break_->label = CloneAST(while_stmt->label.get());
     while_stmt->body->block->stmts.push_back(move(break_stmt));
 
-    // Replace all 'return' stmts in function body with assignment to return
-    // value variable and a labeled break. Insert lets for all args in the
-    // function scope.
-    ArgsReturnReplacer replacer(
-            func, move(args),
-            return_var_ident, while_stmt->label.get());
-    ASTVisitor visitor;
-    while_stmt->body->block = visitor.ModifyASTStmtBlock(
-            move(while_stmt->body->block), &replacer);
-    replacer.AddArgLets(while_stmt->body->block.get());
-    assert(while_stmt->body->block);
-
-    // Insert the 'while' body immediately before the stmt that contains the call.
-    ASTVector<ASTStmt> stmts;
-    stmts.emplace_back(new ASTStmt());
-    stmts[0]->while_ = move(while_stmt);
-    ASTInsertStmts(parent_block, before, move(stmts));
+    ASTRef<ASTStmt> while_stmt_box(new ASTStmt());
+    while_stmt_box->while_ = move(while_stmt);
+    parent_block->stmts.push_back(move(while_stmt_box));
 
     return true;
 }
 }  // anonymous namespace
 
-ASTRef<ASTExpr> FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr> node) {
+bool FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
     if (node->op == ASTExpr::FUNCCALL) {
-        auto stmt = expr_parent_[node.get()];
-        auto parent_block = parent_block_map_[stmt];
+        // Look up the function.
+        const string& name = node->ident->name;
+        auto func = function_defs_[name];
+        if (!func) {
+            Error(node.get(), strprintf("Unknown function '%s'", name.c_str()));
+            return false;
+        }
+
+        // Create a block that will become part of an expression block.
+        ASTRef<ASTStmtBlock> block(new ASTStmtBlock());
         // Create a temporary for the return value.
         ASTRef<ASTExpr> initial_value(new ASTExpr(0));
+        initial_value->type = CloneAST(func->return_type.get());
         auto return_ident_and_expr =
-            ASTDefineTemp(ast_, parent_block, stmt, move(initial_value));
+            ASTDefineTemp(ast_, block.get(), move(initial_value));
         auto return_ident = return_ident_and_expr.first;
         auto return_expr = move(return_ident_and_expr.second);
+
         // Clone the body.
-        auto func = function_calls_[node.get()];
         if (!InlineFunctionBody(
-                    ast_, func, parent_block,
-                    stmt, return_ident, move(node->ops), Errors())) {
-            return ASTRef<ASTExpr>(nullptr);
+                    ast_, func, node.get(), block.get(),
+                    return_ident, move(node->ops), Errors())) {
+            return false;
         }
+
+        // Add a final expression statement with the value of the return-value
+        // temp.
+        ASTRef<ASTStmt> return_expr_stmt(new ASTStmt());
+        return_expr_stmt->expr.reset(new ASTStmtExpr());
+        return_expr_stmt->expr->expr = move(return_expr);
+        block->stmts.push_back(move(return_expr_stmt));
+
         // Replace use of return value with use of the temp we created.
-        return return_expr;
-    } else {
-        return node;
+        node.reset(new ASTExpr());
+        node->op = ASTExpr::STMTBLOCK;
+        node->stmt = move(block);
     }
+    return true;
 }
 
 }  // namesapce frontend

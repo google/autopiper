@@ -16,6 +16,7 @@
 
 #include "frontend/compiler.h"
 #include "frontend/parser.h"
+#include "frontend/func-inline.h"
 
 #include <fstream>
 #include <memory>
@@ -43,6 +44,15 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
     unique_ptr<AST> ast(new AST());
     if (!parser.Parse(ast.get())) {
         return false;
+    }
+
+    if (options.print_ast_orig) {
+        PrintAST(ast.get(), cout);
+    }
+
+    // AST desugaring/transforms.
+    if (!FuncInlinePass::Transform(ast, collector)) {
+        throw autopiper::Exception("Transform failed.");
     }
 
     if (options.print_ast) {

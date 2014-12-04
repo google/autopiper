@@ -19,6 +19,7 @@
 
 #include "frontend/ast.h"
 #include "common/parser-utils.h"  // ErrorCollector
+#include "common/exception.h"
 
 namespace autopiper {
 namespace frontend {
@@ -30,13 +31,10 @@ class ASTVisitor {
         ASTVisitor() {}
         ~ASTVisitor() {}
 
-        bool Visit(const AST* ast, ASTVisitorContext* context) const;
-        ASTRef<AST> Modify(ASTRef<AST> ast, ASTVisitorContext* context) const;
-
 #define METHODS(type)                                                          \
         bool Visit ## type(const type* ast, ASTVisitorContext* context) const; \
-        ASTRef<type> Modify ## type(ASTRef<type> node,                         \
-            ASTVisitorContext* context) const;
+        bool Modify ## type(ASTRef<type>& node, ASTVisitorContext* context)    \
+            const;
 
         METHODS(AST)
         METHODS(ASTFunctionDef)
@@ -55,6 +53,7 @@ class ASTVisitor {
         METHODS(ASTStmtWrite)
         METHODS(ASTStmtSpawn)
         METHODS(ASTStmtReturn)
+        METHODS(ASTStmtExpr)
         METHODS(ASTExpr)
         METHODS(ASTTypeField)
 
@@ -88,24 +87,24 @@ class ASTVisitorContext {
         //     - the traversal recurses down the subtree.
         //     - The Visit<type>Post method is called.
         //
+        // If a Visit method returns false, traversal stops immediately.
+        //
         // For a modify pass: for each node:
         //     - The ModifyPre() method is called.
         //     - the modification traversal recurses down the (new) subtree.
         //     - The ModifyPost() method is called.
         //
-        // The modification protocol is: each modification method returns the
-        // new node that should replace the existing one, or the same node if
-        // no modification is to be performed.
-        //
-        // If a Visit method returns false, or a Modify method returns a null
-        // pointer, traversal stops immediately.
+        // Each modification method takes a reference to a unique_ptr<T>. It is
+        // allowed to modify the referred-to node in place or replace it. If it
+        // replaces the node, it may steal the original node (e.g. to use as
+        // part of a subtree of the new node) or simply allow the unique_ptr to
+        // delete it. The method returns a bool; if it returns false, traversal
+        // stops immediately.
 #define METHODS(type)                                                          \
         virtual bool Visit ## type ## Pre(const type* node) { return true; }   \
-        virtual bool  Visit ## type ## Post(const type* node) { return true; } \
-        virtual ASTRef<type> Modify ## type ## Pre(ASTRef<type> node)          \
-            { return node; }                                                   \
-        virtual ASTRef<type> Modify ## type ## Post(ASTRef<type> node)         \
-            { return node; }
+        virtual bool Visit ## type ## Post(const type* node) { return true; }  \
+        virtual bool Modify ## type ## Pre(ASTRef<type>& node) { return true; }\
+        virtual bool Modify ## type ## Post(ASTRef<type>& node) { return true; }
 
         METHODS(AST)
         METHODS(ASTFunctionDef)
@@ -124,6 +123,7 @@ class ASTVisitorContext {
         METHODS(ASTStmtWrite)
         METHODS(ASTStmtSpawn)
         METHODS(ASTStmtReturn)
+        METHODS(ASTStmtExpr)
         METHODS(ASTExpr)
         METHODS(ASTTypeField)
 

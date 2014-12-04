@@ -320,12 +320,6 @@ class Lexer {
                             state = S_INTLIT;  // do not consume
                             continue;
                         }
-                        if (c == '-') {
-                            cur_token = "-";
-                            state = S_INTLIT;
-                            stream_.ReadNext();
-                            continue;
-                        }
                         if (isalpha(c) || c == '_') {
                             state = S_IDENT;
                             continue;

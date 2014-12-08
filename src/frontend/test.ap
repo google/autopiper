@@ -8,12 +8,20 @@ func plus1(a: int32) : int32 {
 }
 
 func my_func(a: int32, b: int32) : bool {
-    if (a + b == 3) return true;
+    if (a + b == 3) return 1;
 
     while (a > 0) {
         a = a - 1;
     }
     return (a == b);
+}
+
+func complex_lhs() : void {
+    let x : int32[32] = [];
+    let y : AggType[32] = [];
+
+    x[0] = 1;
+    y[x[0]].x = y[x[1]].y;
 }
 
 func entry main() : void {
@@ -27,7 +35,7 @@ func entry main() : void {
 
     let x = read global_in;
     let y = x;
-    let z = [ x = 0, y = 0 ];
+    let z : AggType = [ x = 0, y = 0 ];
     while (y > 0) {
         write global_out, y;
         if (y & 1) {
@@ -37,4 +45,6 @@ func entry main() : void {
         }
         y = y >> 1;
     }
+
+    complex_lhs();
 }

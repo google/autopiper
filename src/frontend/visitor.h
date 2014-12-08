@@ -31,6 +31,20 @@ class ASTVisitor {
         ASTVisitor() {}
         ~ASTVisitor() {}
 
+        template<typename T, typename ...Args>
+        static bool Transform(ASTRef<AST>& node,
+                              autopiper::ErrorCollector* coll,
+                              Args&&... pass_args) {
+            ASTVisitor visitor;
+            T pass(coll, pass_args...);
+            if (T::NeedsVisit()) {
+                if (!visitor.VisitAST(node.get(), &pass)) {
+                    return false;
+                }
+            }
+            return visitor.ModifyAST(node, &pass);
+        }
+
 #define METHODS(type)                                                          \
         bool Visit ## type(const type* ast, ASTVisitorContext* context) const; \
         bool Modify ## type(ASTRef<type>& node, ASTVisitorContext* context)    \
@@ -68,6 +82,11 @@ class ASTVisitorContext {
 
     protected:
         friend class ASTVisitor;
+
+        // Called by ASTVisitor::Transform. Override and return true to
+        // indicate that the pass requires a Visit traversal over the AST
+        // before the Modify traversal.
+        static bool NeedsVisit() { return false; }
 
         ErrorCollector* Errors() { return coll_; }
 

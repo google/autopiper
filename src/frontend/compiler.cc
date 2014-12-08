@@ -17,6 +17,9 @@
 #include "frontend/compiler.h"
 #include "frontend/parser.h"
 #include "frontend/func-inline.h"
+#include "frontend/var-scope.h"
+#include "frontend/type-infer.h"
+#include "frontend/type-lower.h"
 
 #include <fstream>
 #include <memory>
@@ -51,9 +54,19 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
     }
 
     // AST desugaring/transforms.
-    if (!FuncInlinePass::Transform(ast, collector)) {
-        throw autopiper::Exception("Transform failed.");
-    }
+#define TRANSFORM(tform)                                                       \
+    if (!ASTVisitor::Transform< tform >(ast, collector)) {                     \
+        throw autopiper::Exception(                                            \
+                "Compilation failed in pass '" #tform "'.");                   \
+    }                                                                          \
+
+    TRANSFORM(FuncInlinePass);
+    TRANSFORM(ArgLetPass);
+    TRANSFORM(VarScopePass);
+    TRANSFORM(TypeInferPass);
+    TRANSFORM(TypeLowerPass);
+
+#undef TRANSFORM
 
     if (options.print_ast) {
         PrintAST(ast.get(), cout);

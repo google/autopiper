@@ -23,6 +23,7 @@
 #include <string>
 
 #include "common/parser-utils.h"
+#include "frontend/type.h"
 
 namespace autopiper {
 namespace frontend {
@@ -124,10 +125,16 @@ struct ASTIdent : public ASTBase {
 struct ASTType : public ASTBase {
     ASTRef<ASTIdent> ident;
     bool is_port;
+    bool is_array;
+    int array_length;
 
     ASTTypeDef* def;
 
-    ASTType() : is_port(false), def(nullptr)  {}
+    ASTType()
+        : is_port(false),
+          is_array(false),
+          array_length(-1), 
+          def(nullptr) {}
 };
 
 struct ASTStmt : public ASTBase {
@@ -150,17 +157,27 @@ struct ASTStmtExpr : public ASTBase {
 
 struct ASTStmtBlock : public ASTBase {
     ASTVector<ASTStmt> stmts;
+
+    // Is this a lexical scope root? If so, stop name resolution at this point,
+    // rather than moving further up the scope-nest. This is set on inlined
+    // function blocks.
+    bool lexical_scope_root;
+
+    ASTStmtBlock() : lexical_scope_root(false) {}
 };
 
 struct ASTStmtLet : public ASTBase {
     ASTRef<ASTIdent> lhs;
     ASTRef<ASTType> type;
     ASTRef<ASTExpr> rhs;
+
+    InferredType inferred_type;
 };
 
 struct ASTStmtAssign : public ASTBase {
-    // TODO: support array and type-field refs on LHS.
-    ASTRef<ASTIdent> lhs;
+    // LHS is an expr, but only supports (i) VAR, (ii) FIELD_REF (with first
+    // op also a valid LHS), or (iii) ARRAY_REF (with first op a VAR).
+    ASTRef<ASTExpr> lhs;
     ASTRef<ASTExpr> rhs;
 };
 
@@ -234,6 +251,8 @@ struct ASTExpr : public ASTBase {
         FIELD_REF,
         ARRAY_REF,
 
+        ARG,
+
         AGGLITERAL,
         AGGLITERALFIELD,
 
@@ -251,14 +270,16 @@ struct ASTExpr : public ASTBase {
     ASTRef<ASTIdent> ident;
     ASTBignum constant;
 
-    ASTRef<ASTType> type;  // inferred; not from parser
+    ASTStmtLet* def; // for VAR nodes; connected during VarScopePass
+
+    InferredType inferred_type;
 
     ASTRef<ASTStmtBlock> stmt;
 
-    ASTExpr() : op(CONST)  {}
+    ASTExpr() : op(CONST), def(nullptr)  {}
     ASTExpr(ASTBignum constant_)
-        : op(CONST), constant(constant_)
-    {}
+        : ASTExpr()
+    { constant = constant_; }
 };
 
 template<typename T>
@@ -306,7 +327,8 @@ ASTRef<ASTIdent> ASTGenSym(AST* ast);
 std::pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
         AST* ast,
         ASTStmtBlock* parent,
-        ASTRef<ASTExpr> initial_value);
+        ASTRef<ASTExpr> initial_value,
+        ASTRef<ASTType> type);
 
 }  // namespace frontend
 }  // namespace autopiper

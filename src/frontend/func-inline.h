@@ -41,20 +41,10 @@ class FuncInlinePass : public ASTVisitorContext {
     public:
         FuncInlinePass(autopiper::ErrorCollector* coll);
 
-        static bool Transform(ASTRef<AST>& node,
-                              autopiper::ErrorCollector* coll) {
-            ASTVisitor visitor;
-            FuncInlinePass pass(coll);
-            if (!visitor.VisitAST(node.get(), &pass)) {
-                return false;
-            }
-            if (!visitor.ModifyAST(node, &pass)) {
-                return false;
-            }
-            return true;
-        }
-
     protected:
+        friend class ASTVisitor;
+        static bool NeedsVisit() { return true; }
+
         // Visit pass -- make note of all function defs.
         virtual bool VisitASTFunctionDefPre(
                 const ASTFunctionDef* node);

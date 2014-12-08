@@ -118,7 +118,7 @@ AST_PRINTER(ASTParam) {
 }
 
 AST_PRINTER(ASTStmt) {
-    out << I(0) << "(stmt " << node << endl;
+    out << I(0) << "(stmt " << endl;
 #define T(type)                 \
     if (node->type)             \
         P(node->type.get(), 1)
@@ -163,9 +163,9 @@ AST_PRINTER(ASTStmtLet) {
 
 AST_PRINTER(ASTStmtAssign) {
     out << I(0) << "(stmt-assign" << endl;
-    out << I(1) << "(lhs ";
+    out << I(1) << "(lhs " << endl;
     P(node->lhs.get(), 2);
-    out << ")" << endl;
+    out << I(1) << ")" << endl;
     out << I(1) << "(rhs" << endl;
     P(node->rhs.get(), 2);
     out << I(1) << ")" << endl;
@@ -285,6 +285,7 @@ AST_PRINTER(ASTExpr) {
         T(CONST);
         T(FIELD_REF);
         T(ARRAY_REF);
+        T(ARG);
         T(AGGLITERAL);
         T(AGGLITERALFIELD);
 
@@ -494,7 +495,6 @@ AST_CLONE(ASTExpr) {
     VEC(ops);
     SUB(ident);
     PRIM(constant);
-    SUB(type);
     return ret;
 }
 
@@ -519,12 +519,14 @@ ASTRef<ASTIdent> ASTGenSym(AST* ast) {
 pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
     AST* ast,
     ASTStmtBlock* parent,
-    ASTRef<ASTExpr> initial_value) {
+    ASTRef<ASTExpr> initial_value,
+    ASTRef<ASTType> type) {
 
     ASTRef<ASTStmtLet> let_stmt(new ASTStmtLet());
     let_stmt->lhs.reset(new ASTIdent());
     let_stmt->lhs = ASTGenSym(ast);
     let_stmt->rhs = move(initial_value);
+    let_stmt->type = move(type);
     ASTRef<ASTStmt> stmt_box(new ASTStmt());
     const ASTIdent* temp_ident = let_stmt->lhs.get();
     stmt_box->let = move(let_stmt);

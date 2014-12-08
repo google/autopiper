@@ -54,7 +54,9 @@ class ArgsReturnReplacer : public ASTVisitorContext {
                 ASTRef<ASTStmtBlock> block(new ASTStmtBlock());
                 ASTRef<ASTStmtAssign> assign(new ASTStmtAssign());
                 ASTRef<ASTStmtBreak> break_(new ASTStmtBreak());
-                assign->lhs = CloneAST(return_var_);
+                assign->lhs.reset(new ASTExpr());
+                assign->lhs->op = ASTExpr::VAR;
+                assign->lhs->ident = CloneAST(return_var_);
                 assign->rhs = move(node->return_->value);
                 break_->label = CloneAST(while_label_);
  
@@ -114,6 +116,7 @@ bool InlineFunctionBody(
     while_stmt->condition.reset(new ASTExpr(1));
     while_stmt->body.reset(new ASTStmt());
     while_stmt->body->block.reset(new ASTStmtBlock());
+    while_stmt->body->block->lexical_scope_root = true;
 
     // Start with a sequence of let-statements that define arg values as locals
     // (ordinary lexical scope resolution will then see these when used by the
@@ -165,9 +168,9 @@ bool FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
         ASTRef<ASTStmtBlock> block(new ASTStmtBlock());
         // Create a temporary for the return value.
         ASTRef<ASTExpr> initial_value(new ASTExpr(0));
-        initial_value->type = CloneAST(func->return_type.get());
         auto return_ident_and_expr =
-            ASTDefineTemp(ast_, block.get(), move(initial_value));
+            ASTDefineTemp(ast_, block.get(), move(initial_value),
+                          CloneAST(func->return_type.get()));
         auto return_ident = return_ident_and_expr.first;
         auto return_expr = move(return_ident_and_expr.second);
 

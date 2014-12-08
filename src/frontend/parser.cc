@@ -225,6 +225,20 @@ bool Parser::ParseType(ASTType* ty) {
         return false;
     }
     ty->ident->type = ASTIdent::TYPE;
+
+    if (TryExpect(Token::LBRACKET)) {
+        Consume();
+        if (!Expect(Token::INT_LITERAL)) {
+            return false;
+        }
+        ty->is_array = true;
+        ty->array_length = static_cast<int>(CurToken().int_literal);
+        Consume();
+        if (!Consume(Token::RBRACKET)) {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -253,9 +267,8 @@ bool Parser::ParseStmt(ASTStmt* st) {
 #undef HANDLE_STMT_TYPE
 
     // No keywords matched, so we must be seeing the left-hand side identifier
-    // in an assignment.
-    st->assign = New<ASTStmtAssign>();
-    return ParseStmtAssign(st->assign.get());
+    // in an assignment or simply an expression statement.
+    return ParseStmtAssignOrExpr(st);
 }
 
 bool Parser::ParseStmtLet(ASTStmtLet* let) {
@@ -286,23 +299,36 @@ bool Parser::ParseStmtLet(ASTStmtLet* let) {
     return Consume(Token::SEMICOLON);
 }
 
-bool Parser::ParseStmtAssign(ASTStmtAssign* assign) {
-    assign->lhs = New<ASTIdent>();
-    if (!ParseIdent(assign->lhs.get())) {
-        return false;
-    }
-    assign->lhs->type = ASTIdent::VAR;
+bool Parser::ParseStmtAssignOrExpr(ASTStmt* parent) {
+    // Parse one expression: this may be the LHS of an assignment or may be a
+    // bare expression statement.
+    ASTRef<ASTExpr> lhs = ParseExpr();
 
-    if (!Consume(Token::EQUALS)) {
-        return false;
-    }
+    if (TryConsume(Token::SEMICOLON)) {
+        // An expression statement.
+        parent->expr.reset(new ASTStmtExpr());
+        parent->expr->expr = move(lhs);
+        return true;
+    } else {
+        // An assignment statement.
+        parent->assign.reset(new ASTStmtAssign());
 
-    assign->rhs = ParseExpr();
-    if (!assign->rhs) {
-        return false;
-    }
+        // Allow any expression on the LHS at parse time; type-lowering will check
+        // that it's valid (VAR, FIELD_REF with aggregate object an LHS, or
+        // ARRAY_REF with array object an ident).
+        parent->assign->lhs = move(lhs);
 
-    return Consume(Token::SEMICOLON);
+        if (!Consume(Token::EQUALS)) {
+            return false;
+        }
+
+        parent->assign->rhs = ParseExpr();
+        if (!parent->assign->rhs) {
+            return false;
+        }
+
+        return Consume(Token::SEMICOLON);
+    }
 }
 
 bool Parser::ParseStmtIf(ASTStmtIf* if_) {

@@ -52,7 +52,7 @@ class Parser : public ParserBase {
         bool ParseStmt(ASTStmt* st);
 
         bool ParseStmtLet(ASTStmtLet* let);
-        bool ParseStmtAssign(ASTStmtAssign* assign);
+        bool ParseStmtAssignOrExpr(ASTStmt* parent);
         bool ParseStmtIf(ASTStmtIf* if_);
         bool ParseStmtWhile(ASTStmtWhile* while_);
         bool ParseStmtBreak(ASTStmtBreak* break_);

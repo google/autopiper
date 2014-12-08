@@ -106,7 +106,7 @@ VISIT(ASTStmtLet, {
 })
 
 VISIT(ASTStmtAssign, {
-    CHECK(VisitASTIdent(node->lhs.get(), context));
+    CHECK(VisitASTExpr(node->lhs.get(), context));
     CHECK(VisitASTExpr(node->rhs.get(), context));
 })
 
@@ -161,9 +161,6 @@ VISIT(ASTExpr, {
     }
     if (node->ident) {
         CHECK(VisitASTIdent(node->ident.get(), context));
-    }
-    if (node->type) {
-        CHECK(VisitASTType(node->type.get(), context));
     }
 })
 
@@ -268,7 +265,7 @@ MODIFY(ASTStmtLet, {
 })
 
 MODIFY(ASTStmtAssign, {
-    FIELD(node->lhs, ASTIdent);
+    FIELD(node->lhs, ASTExpr);
     FIELD(node->rhs, ASTExpr);
 })
 
@@ -323,9 +320,6 @@ MODIFY(ASTExpr, {
     }
     if (node->ident) {
         FIELD(node->ident, ASTIdent);
-    }
-    if (node->type) {
-        FIELD(node->type, ASTType);
     }
 })
 

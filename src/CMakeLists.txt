@@ -19,6 +19,9 @@ set(FRONTEND_SRCS
     frontend/ast.cc
     frontend/visitor.cc
     frontend/func-inline.cc
+    frontend/var-scope.cc
+    frontend/type-infer.cc
+    frontend/type-lower.cc
     frontend/codegen.cc
     frontend/compiler.cc
     frontend/cmdline-driver.cc)

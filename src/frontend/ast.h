@@ -102,11 +102,19 @@ struct ASTParam : public ASTBase {
 struct ASTTypeDef : public ASTBase {
     ASTRef<ASTIdent> ident;
     ASTVector<ASTTypeField> fields;
+
+    int width;  // derived by type-infer pass
+
+    ASTTypeDef() : width(0) {}
 };
 
 struct ASTTypeField : public ASTBase {
     ASTRef<ASTIdent> ident;
     ASTRef<ASTType> type;
+
+    int offset, width;  // derived by type-infer pass
+
+    ASTTypeField() : offset(0), width(0) {}
 };
 
 struct ASTIdent : public ASTBase {

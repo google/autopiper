@@ -56,15 +56,20 @@ class TypeInferPass : public ASTVisitorContext {
         // ------ InferredType operations ------
 
         // Create a new InferredType from an ASTType and an AST typedef map.
-        typedef std::map<std::string, const ASTTypeDef*> TypeDefMap;
+        typedef std::map<std::string, ASTTypeDef*> TypeDefMap;
         static InferredType New(const ASTType* type, const TypeDefMap& types);
         // Create a map of typedefs by name for 'New' above given an AST.
         static TypeDefMap GetTypeMap(const AST* ast);
 
+        // Resolve aggregate type defs and set their widths, and assign
+        // bit-offsets to each type field in type defs.
+        static bool ResolveAggTypes(TypeDefMap* types,
+                ErrorCollector* coll);
+
         // Join two types. Resolves to a concrete type if either input type is
         // concrete or if both are, and are the same, or "top" if neither is known,
         // or "bottom" if both are known and are different.
-        InferredType Meet(const InferredType& other) const;
+        static InferredType Meet(const InferredType& x, const InferredType& y);
 };
 
 }  // namesapce frontend

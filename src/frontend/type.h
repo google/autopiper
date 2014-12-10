@@ -17,6 +17,8 @@
 #ifndef _AUTOPIPER_FRONTEND_TYPE_H_
 #define _AUTOPIPER_FRONTEND_TYPE_H_
 
+#include <string>
+
 namespace autopiper {
 namespace frontend {
 
@@ -39,17 +41,22 @@ struct ASTTypeDef;  // ast.h -- not included here (it includes this file).
 struct InferredType {
     enum Type {
         UNKNOWN,  // not known yet ("top" in the semilattice)
-        AGG,      // aggregate
-        PRIM,     // primitive
+        // known, with agg (null or not), is_port, is_array determining type
+        RESOLVED,
         CONFLICT, // conflicted ("bottom" in the semilattice)
     } type;
+
     ASTTypeDef* agg;  // for aggregate only
     int width;        // for primitive and aggregate
+    bool is_port;
+    bool is_array;
 
     // Error message if conflicted.
     std::string conflict_msg;
 
-    InferredType() : type(UNKNOWN), agg(nullptr), width(-1) {}
+    InferredType()
+        : type(UNKNOWN), agg(nullptr), width(-1),
+          is_port(false), is_array(false) {}
 };
 
 }  // namespace frontend

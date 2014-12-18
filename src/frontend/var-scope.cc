@@ -19,9 +19,9 @@
 
 using namespace std;
 
-// TODO: mark the inserted block-scope on function inlining specially so that
-// it acts as a 'barrier' when resolving up the scope-nest. Otherwise, we don't
-// have lexical scope, we have dynamic scope!
+// TODO: Run this resolution prior to inlining, then do the inlining and patch
+// everything up afterward. Right now we actually have dynamic scope, not
+// lexical scope, which is really ugly!
 
 namespace autopiper {
 namespace frontend {
@@ -49,7 +49,7 @@ bool ArgLetPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
 }
 
 bool VarScopePass::ModifyASTStmtBlockPre(ASTRef<ASTStmtBlock>& node) {
-    OpenScope(node->lexical_scope_root);
+    OpenScope();
     return true;
 }
 
@@ -98,11 +98,6 @@ ASTStmtLet* VarScopePass::GetDef(const std::string& name) {
         auto it = defs.find(name);
         if (it != defs.end()) {
             return it->second;
-        }
-        if (scopes_[i].scope_root) {
-            // A scope-root (occurring due to e.g. an inlined function body)
-            // stops the scope-nest-walk early.
-            break;
         }
     }
     return nullptr;

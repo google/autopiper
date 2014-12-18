@@ -1,12 +1,11 @@
-- pass to link up type uses to their defs (and include builtin types and a way
-  to define arbitrary-width integers)
-- width-inferencing and typechecking pass
-- type removal pass (convert to wide signals and bitslices/concats)
-- codegen visitor pass
+- codegen visitor pass: straightline code
+- codegen visitor pass: control flow, phi-node generation
 - support for all IR-supported primitives:
   - valid_if, kill, killyounger
   - ports and chans
   - timing constraints
+- proper lexical scope and non-hacky function inlining
+- support for aggregates and type lowering pass
 - support for "macros" in C++ (as codegen visitor pass hooks)
 - transactional state macros
 - conditional/blocking port hooks

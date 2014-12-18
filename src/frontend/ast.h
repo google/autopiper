@@ -165,13 +165,6 @@ struct ASTStmtExpr : public ASTBase {
 
 struct ASTStmtBlock : public ASTBase {
     ASTVector<ASTStmt> stmts;
-
-    // Is this a lexical scope root? If so, stop name resolution at this point,
-    // rather than moving further up the scope-nest. This is set on inlined
-    // function blocks.
-    bool lexical_scope_root;
-
-    ASTStmtBlock() : lexical_scope_root(false) {}
 };
 
 struct ASTStmtLet : public ASTBase {

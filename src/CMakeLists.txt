@@ -20,6 +20,8 @@ set(FRONTEND_SRCS
     frontend/visitor.cc
     frontend/func-inline.cc
     frontend/var-scope.cc
+    frontend/type.cc
+    frontend/agg-types.cc
     frontend/type-infer.cc
     frontend/type-lower.cc
     frontend/codegen.cc

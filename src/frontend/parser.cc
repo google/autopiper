@@ -689,10 +689,13 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
         if (ident == "read") {
             Consume();
             ret->op = ASTExpr::PORTREAD;
-            if (!ParseIdent(ret->ident.get())) {
+            ASTRef<ASTExpr> var_ref(new ASTExpr());
+            var_ref->op = ASTExpr::VAR;
+            var_ref->ident.reset(new ASTIdent());
+            if (!ParseIdent(var_ref->ident.get())) {
                 return astnull<ASTExpr>();
             }
-            ret->ident->type = ASTIdent::PORT;
+            ret->ops.push_back(move(var_ref));
             return ret;
         }
         

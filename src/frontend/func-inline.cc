@@ -116,11 +116,10 @@ bool InlineFunctionBody(
     while_stmt->condition.reset(new ASTExpr(1));
     while_stmt->body.reset(new ASTStmt());
     while_stmt->body->block.reset(new ASTStmtBlock());
-    while_stmt->body->block->lexical_scope_root = true;
 
     // Start with a sequence of let-statements that define arg values as locals
-    // (ordinary lexical scope resolution will then see these when used by the
-    // function body).
+    // (ordinary scope resolution will then see these when used by the function
+    // body).
     ASTVisitor visitor;
     ArgsReturnReplacer replacer(
             func, move(args),

@@ -162,6 +162,9 @@ VISIT(ASTExpr, {
     if (node->ident) {
         CHECK(VisitASTIdent(node->ident.get(), context));
     }
+    if (node->stmt) {
+        CHECK(VisitASTStmtBlock(node->stmt.get(), context));
+    }
 })
 
 VISIT(ASTTypeField, {
@@ -320,6 +323,9 @@ MODIFY(ASTExpr, {
     }
     if (node->ident) {
         FIELD(node->ident, ASTIdent);
+    }
+    if (node->stmt) {
+        FIELD(node->stmt, ASTStmtBlock);
     }
 })
 

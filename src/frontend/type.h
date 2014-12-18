@@ -43,6 +43,8 @@ struct InferredType {
         UNKNOWN,  // not known yet ("top" in the semilattice)
         // known, with agg (null or not), is_port, is_array determining type
         RESOLVED,
+        // known, able to expand; when it meets a RESOLVED it becomes RESOLVED.
+        EXPANDING_CONST,
         CONFLICT, // conflicted ("bottom" in the semilattice)
     } type;
 
@@ -57,6 +59,20 @@ struct InferredType {
     InferredType()
         : type(UNKNOWN), agg(nullptr), width(-1),
           is_port(false), is_array(false) {}
+
+    explicit InferredType(int width_)
+        : type(RESOLVED), agg(nullptr), width(width_),
+          is_port(false), is_array(false) {}
+
+    // Join two types. Resolves to a concrete type if either input type is
+    // concrete or if both are, and are the same, or "top" if neither is known,
+    // or "bottom" if both are known and are different.
+    InferredType Meet(const InferredType& other) const;
+
+    bool operator==(const InferredType& other) const;
+    bool operator!=(const InferredType& other) const { return !(*this == other); }
+
+    std::string ToString() const;
 };
 
 }  // namespace frontend

@@ -61,27 +61,16 @@ class VarScopePass : public ASTVisitorContext {
         // Modifier on ASTExpr: resolve all VARs.
         virtual bool ModifyASTExprPre(ASTRef<ASTExpr>& expr);
 
+
     private:
         struct Scope {
-            // lexical scope root; do not go further up. This is our hacky way
-            // of implementing lexical scope when inlining functions. The real
-            // solution is to do name resolution prior to inlining. However,
-            // then our inliner needs to do a bit more work to link up args and
-            // the return value and to patch up the def-pointers on clone.
-            // Because we don't have nested or first-class functions, but only
-            // top-level functions with lexically nested scopes within them,
-            // this should be sufficient.
-            bool scope_root;
             std::map<std::string, ASTStmtLet*> defs;
-
-            Scope() : scope_root(false) {}
-            explicit Scope(bool scope_root_) : scope_root(scope_root_) {}
         };
 
         std::vector<Scope> scopes_;
 
-        void OpenScope(bool is_root) {
-            scopes_.push_back(Scope(is_root));
+        void OpenScope() {
+            scopes_.push_back(Scope());
         }
         void CloseScope() {
             assert(!scopes_.empty());

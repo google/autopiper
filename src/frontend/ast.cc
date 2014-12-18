@@ -318,6 +318,11 @@ AST_PRINTER(ASTExpr) {
         P(node->stmt.get(), 2);
         out << I(1) << ")" << endl;
     }
+    if (node->inferred_type.type == InferredType::RESOLVED ||
+        node->inferred_type.type == InferredType::EXPANDING_CONST) {
+        out << I(1) << "(inferred_type " << node->inferred_type.ToString()
+            << ")" << endl;
+    }
     out << I(0) << ")" << endl;
 }
 

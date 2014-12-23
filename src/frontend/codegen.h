@@ -55,6 +55,10 @@ class CodeGenScope {
             return scopes_.back().bindings[k];
         }
 
+        void Set(const K& k, V v) {
+            scopes_.back().bindings[k] = v;
+        }
+
         bool Has(const K& k) {
             for (int i = scopes_.size() - 1; i >= 0; --i) {
                 auto m = scopes_[i].bindings;
@@ -67,13 +71,11 @@ class CodeGenScope {
         }
 
         void Push() {
-            printf("push scope\n");
-            scopes_.push_back();
+            scopes_.push_back({});
         }
 
         void Pop() {
             scopes_.pop_back();
-            printf("pop scope\n");
             assert(!scopes_.empty());
         }
 
@@ -112,7 +114,7 @@ class CodeGenScope {
             // (each joining scope).
             std::map<K, std::vector<V>> ret;
             for (auto& k : vars) {
-                auto v = ret[k];
+                auto& v = ret[k];
                 for (auto& s : inner_scopes) {
                     auto it = s.find(k);
                     if (it != s.end()) {
@@ -161,7 +163,7 @@ class CodeGenContext {
 
         // The expr -> IRStmt mapping. Each IRStmt is one value (in the SSA
         // sense).
-        const IRStmt* GetIRStmt(const ASTExpr* expr) {
+        IRStmt* GetIRStmt(const ASTExpr* expr) {
             return expr_to_ir_map_[expr];
         }
 
@@ -174,14 +176,14 @@ class CodeGenContext {
         // Associate an IRStmt created in some other way (e.g., already added)
         // as the value of |expr|.
         void AddIRStmt(const IRStmt* stmt, const ASTExpr* expr) {
-            expr_to_ir_map_[expr] = stmt;
+            expr_to_ir_map_[expr] = const_cast<IRStmt*>(stmt);
         }
 
     private:
         std::unique_ptr<IRProgram> prog_;
         int gensym_;
         IRBB* curbb_;
-        std::map<const ASTExpr*, const IRStmt*> expr_to_ir_map_;
+        std::map<const ASTExpr*, IRStmt*> expr_to_ir_map_;
 
         CodeGenScope<ASTStmtLet*, const ASTExpr*> bindings_;
 };

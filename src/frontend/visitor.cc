@@ -113,16 +113,24 @@ VISIT(ASTStmtAssign, {
 })
 
 VISIT(ASTStmtIf, {
-    CHECK(VisitASTExpr(node->condition.get(), context));
-    CHECK(VisitASTStmt(node->if_body.get(), context));
+    if (node->condition) {
+        CHECK(VisitASTExpr(node->condition.get(), context));
+    }
+    if (node->if_body) {
+        CHECK(VisitASTStmt(node->if_body.get(), context));
+    }
     if (node->else_body) {
         CHECK(VisitASTStmt(node->else_body.get(), context));
     }
 })
 
 VISIT(ASTStmtWhile, {
-    CHECK(VisitASTExpr(node->condition.get(), context));
-    CHECK(VisitASTStmt(node->body.get(), context));
+    if (node->condition) {
+        CHECK(VisitASTExpr(node->condition.get(), context));
+    }
+    if (node->body) {
+        CHECK(VisitASTStmt(node->body.get(), context));
+    }
     if (node->label) {
         CHECK(VisitASTIdent(node->label.get(), context));
     }
@@ -277,16 +285,24 @@ MODIFY(ASTStmtAssign, {
 })
 
 MODIFY(ASTStmtIf, {
-    FIELD(node->condition, ASTExpr);
-    FIELD(node->if_body, ASTStmt);
+    if (node->condition) {
+        FIELD(node->condition, ASTExpr);
+    }
+    if (node->if_body) {
+        FIELD(node->if_body, ASTStmt);
+    }
     if (node->else_body) {
         FIELD(node->else_body, ASTStmt);
     }
 })
 
 MODIFY(ASTStmtWhile, {
-    FIELD(node->condition, ASTExpr);
-    FIELD(node->body, ASTStmt);
+    if (node->condition) {
+        FIELD(node->condition, ASTExpr);
+    }
+    if (node->body) {
+        FIELD(node->body, ASTStmt);
+    }
     if (node->label) {
         FIELD(node->label, ASTIdent);
     }

@@ -79,7 +79,7 @@ bool CodeGenPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
 }
 
 bool CodeGenPass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
-    ctx_->Bindings()[node.get()] = node->rhs.get();
+    ctx_->Bindings().Set(node.get(), node->rhs.get());
     return true;
 }
 
@@ -87,7 +87,7 @@ bool CodeGenPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
     if (node->lhs->op == ASTExpr::VAR) {
         // Simple variable assignment.  Associate the binding (let) with the
         // new ASTExpr (the RHS).
-        ctx_->Bindings()[node->lhs->def] = node->rhs.get();
+        ctx_->Bindings().Set(node->lhs->def, node->rhs.get());
     } else if (node->lhs->op == ASTExpr::ARRAY_REF) {
         // Generate an array-write IR stmt.
         // TODO.
@@ -116,8 +116,7 @@ bool CodeGenPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
         return false;
     }
     write_stmt->port_name = portdef->ident->name;
-    IRStmt* val = const_cast<IRStmt*>(
-            ctx_->GetIRStmt(node->rhs.get()));
+    IRStmt* val = ctx_->GetIRStmt(node->rhs.get());
     write_stmt->args.push_back(val);
     write_stmt->arg_nums.push_back(val->valnum);
     write_stmt->width = node->rhs->inferred_type.width;
@@ -182,8 +181,7 @@ bool CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
         stmt->op = op;
         stmt->width = node->inferred_type.width;
         for (auto& op : node->ops) {
-            IRStmt* op_stmt = const_cast<IRStmt*>(
-                    ctx_->GetIRStmt(op.get()));
+            IRStmt* op_stmt = ctx_->GetIRStmt(op.get());
             stmt->args.push_back(op_stmt);
             stmt->arg_nums.push_back(op_stmt->valnum);
         }
@@ -289,24 +287,141 @@ bool CodeGenPass::ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node) {
 // If-statement support.
 
 bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
-    // TODO
-    assert(false);
-    return false;
+    // We need a subpass to do manual codegen for our subordinate parts. It
+    // shares our context.
+    CodeGenPass subpass(Errors(), ctx_);
+    ASTVisitor visitor;
+
+    // Create two BBs for the if- and else-bodies respectively.
+    IRBB* if_body = ctx_->AddBB();
+    IRBB* else_body = ctx_->AddBB();
+
+    // Generate the conditional explicitly -- since we're a pre-hook (so that
+    // we can control if-/else-body generation), we don't get this for free as
+    // the post-hooks do.
+    if (!visitor.ModifyASTExpr(node->condition, &subpass)) {
+        return false;
+    }
+    IRStmt* conditional = ctx_->GetIRStmt(node->condition.get());
+
+    // Terminate CurBB() with the conditional branch to the if- or else-path.
+    unique_ptr<IRStmt> cond_br(new IRStmt());
+    cond_br->valnum = ctx_->Valnum();
+    cond_br->type = IRStmtIf;
+    cond_br->args.push_back(conditional);
+    cond_br->arg_nums.push_back(conditional->valnum);
+    cond_br->targets.push_back(if_body);
+    cond_br->target_names.push_back(if_body->label);
+    cond_br->targets.push_back(else_body);
+    cond_br->target_names.push_back(else_body->label);
+    ctx_->AddIRStmt(ctx_->CurBB(), move(cond_br));
+
+    // Generate each of the if- and else-bodies, pushing a control-flow-path
+    // binding context and saving the overwritten bindings so that we can merge
+    // with phis at the join point.
+    
+    ctx_->Bindings().Push();
+    ctx_->SetCurBB(if_body);
+    if (!visitor.ModifyASTStmt(node->if_body, &subpass)) {
+        return false;
+    }
+    auto if_bindings = ctx_->Bindings().ReleasePop();
+    // current BB at end of if-body may be different (if body was not
+    // straightline code) -- save to build the merge below.
+    IRBB* if_end = ctx_->CurBB();
+
+    ctx_->Bindings().Push();
+    ctx_->SetCurBB(else_body);
+    if (node->else_body) {
+        if (!visitor.ModifyASTStmt(node->else_body, &subpass)) {
+            return false;
+        }
+    }
+    auto else_bindings = ctx_->Bindings().ReleasePop();
+    IRBB* else_end = ctx_->CurBB();
+
+    // Generate the merge point. We (i) create the new BB and set it as the
+    // current BB (so that at exit, we leave the current BB set to our single
+    // exit point), (ii) generate the jumps from each side of the diamond to
+    // the merge point, and (iii) insert phis for all overwritten bindings.
+    IRBB* merge_bb = ctx_->AddBB();
+    ctx_->SetCurBB(merge_bb);
+
+    unique_ptr<IRStmt> if_end_jmp(new IRStmt());
+    if_end_jmp->valnum = ctx_->Valnum();
+    if_end_jmp->type = IRStmtJmp;
+    if_end_jmp->targets.push_back(merge_bb);
+    if_end_jmp->target_names.push_back(merge_bb->label);
+    ctx_->AddIRStmt(if_end, move(if_end_jmp));
+
+    unique_ptr<IRStmt> else_end_jmp(new IRStmt());
+    else_end_jmp->valnum = ctx_->Valnum();
+    else_end_jmp->type = IRStmtJmp;
+    else_end_jmp->targets.push_back(merge_bb);
+    else_end_jmp->target_names.push_back(merge_bb->label);
+    ctx_->AddIRStmt(else_end, move(else_end_jmp));
+
+    auto phi_map = ctx_->Bindings().JoinOverlays(
+            vector<map<ASTStmtLet*, const ASTExpr*>> {
+                if_bindings, else_bindings });
+
+    for (auto& p : phi_map) {
+        ASTStmtLet* let = p.first;
+        vector<const ASTExpr*>& sub_bindings = p.second;
+        IRStmt* if_val = ctx_->GetIRStmt(sub_bindings[0]);
+        IRStmt* else_val = ctx_->GetIRStmt(sub_bindings[1]);
+
+        unique_ptr<IRStmt> phi_node(new IRStmt());
+        phi_node->type = IRStmtPhi;
+        phi_node->valnum = ctx_->Valnum();
+        phi_node->width = let->inferred_type.width;
+        phi_node->args.push_back(if_val);
+        phi_node->arg_nums.push_back(if_val->valnum);
+        phi_node->args.push_back(else_val);
+        phi_node->arg_nums.push_back(else_val->valnum);
+        phi_node->targets.push_back(if_end);
+        phi_node->target_names.push_back(if_end->label);
+        phi_node->targets.push_back(else_end);
+        phi_node->target_names.push_back(else_end->label);
+
+        IRStmt* new_node = ctx_->AddIRStmt(merge_bb, move(phi_node));
+
+        // This is a bit of a hack: to set the current binding to the phi node,
+        // we overwrite the expr -> IR value mapping for the last binding in
+        // this context. We have to do this because there is no ASTExpr
+        // corresponding to the "merged value" -- the AST doesn't have phi
+        // nodes (it's not SSA). Ideally bindings would be directly to IR
+        // stmts, but there are cases where that becomes a little ugly too.
+        // Eh, this is just a prototype. TODO: Make it cleaner.
+        const ASTExpr* expr_binding = ctx_->Bindings()[let];
+        ctx_->AddIRStmt(new_node, expr_binding);
+    }
+
+    // Now clear the condition and bodies so that the visit-pass driver does
+    // not recurse into them.
+    node->condition.reset(nullptr);
+    node->if_body.reset(nullptr);
+    node->else_body.reset(nullptr);
+
+    return true;
 }
 
 // While-loop support: while, break, continue
 
 bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
+    // TODO
     assert(false);
     return false;
 }
 
 bool CodeGenPass::ModifyASTStmtBreakPost(ASTRef<ASTStmtBreak>& node) {
+    // TODO
     assert(false);
     return false;
 }
 
 bool CodeGenPass::ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node) {
+    // TODO
     assert(false);
     return false;
 }
@@ -314,6 +429,7 @@ bool CodeGenPass::ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node) {
 // Spawn support.
 
 bool CodeGenPass::ModifyASTStmtSpawnPre(ASTRef<ASTStmtSpawn>& node) {
+    // TODO
     assert(false);
     return false;
 }

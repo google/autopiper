@@ -224,9 +224,9 @@ AST_PRINTER(ASTStmtContinue) {
 
 AST_PRINTER(ASTStmtWrite) {
     out << I(0) << "(stmt-write" << endl;
-    out << I(1) << "(port ";
+    out << I(1) << "(port" << endl;
     P(node->port.get(), 2);
-    out << ")" << endl;;
+    out << I(1) << ")" << endl;;
     out << I(1) << "(rhs" << endl;
     P(node->rhs.get(), 2);
     out << I(1) << ")" << endl;

@@ -1,0 +1,15 @@
+func entry main() : void {
+    let global_in : port int32 = port "global_in";
+    let global_out : port int32 = port "global_out";
+    let anon_port : port int32 = port;
+
+    let val1 = read global_in;
+    let int32_val = read global_in;
+
+    let x = read global_in;
+    let y = x;
+    write global_out, y;
+    write anon_port, 1;
+    write anon_port, 0;
+    y = y >> 1;
+}

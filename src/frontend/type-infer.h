@@ -88,11 +88,16 @@ class TypeInferPass : public ASTVisitorContext {
         // build the type inference graph so that we can then run the inference
         // algorithm and update the types. N.B. that the handlers *don't*
         // directly modify the types -- they only build the graph with mutable
-        // references to the types!
+        // references to the types! These references are later used to update
+        // all types during Infer() after the types are inferred at all nodes.
 
         virtual bool ModifyASTPre(ASTRef<AST>& node);
         virtual bool ModifyASTExprPost(ASTRef<ASTExpr>& node);
         virtual bool ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node);
+        virtual bool ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node);
+        virtual bool ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node);
+        virtual bool ModifyASTStmtIfPost(ASTRef<ASTStmtIf>& node);
+        virtual bool ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node);
 
         // Post-AST handler actually runs the type inference.
         virtual bool ModifyASTPost(ASTRef<AST>& node) {
@@ -135,6 +140,11 @@ class TypeInferPass : public ASTVisitorContext {
         // port, not an array; aggregates allowed as they're treated like
         // large/concatenated integers).
         void EnsureSimple(InferenceNode* n);
+
+        // Connect two nodes across a port read/write -- two-way type
+        // conveyance with transfer functions that add/remove the 'port type'
+        // modifier.
+        void ConveyPort(InferenceNode* port_node, InferenceNode* value_node);
 
         // Once the pass has run over the AST to collect all type slots and
         // build the inference graph, this function solves the inference graph

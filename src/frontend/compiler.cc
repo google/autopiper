@@ -20,6 +20,8 @@
 #include "frontend/var-scope.h"
 #include "frontend/type-infer.h"
 #include "frontend/type-lower.h"
+#include "frontend/codegen.h"
+#include "backend/compiler.h"
 
 #include <fstream>
 #include <memory>
@@ -72,10 +74,28 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
         PrintAST(ast.get(), cout);
     }
 
-    // TODO: crosslinking
-    // TODO: typechecking and width inferencing
-    // TODO: AST-visitor codegen pass
-    // TODO: print/write out IR if requested; invoke backend
+    CodeGenContext codegen_ctx;
+    CodeGenPass codegen_pass(collector, &codegen_ctx);
+    ASTVisitor codegen_visitor;
+    if (!codegen_visitor.ModifyAST(ast, &codegen_pass)) {
+        throw autopiper::Exception(
+                "Compilation failed in IR code generation.");
+    }
+
+    unique_ptr<IRProgram> ir = codegen_ctx.Release();
+
+    if (options.print_ir) {
+        printf("IR:\n%s\n", ir->ToString().c_str());
+    }
+
+    // TODO: print IR to IR output file if requested (ensure IR printer
+    // produces parsable output).
+
+    BackendCompiler backend_;
+    BackendCompiler::Options backend_options_;
+    backend_options_.input_ir = ir.get();
+    backend_options_.filename = "(ir)";
+    backend_options_.output = options.output;
 
     return true;
 }

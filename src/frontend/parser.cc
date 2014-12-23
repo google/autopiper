@@ -384,11 +384,12 @@ bool Parser::ParseStmtContinue(ASTStmtContinue* continue_) {
 }
 
 bool Parser::ParseStmtWrite(ASTStmtWrite* write) {
-    write->port = New<ASTIdent>();
-    if (!ParseIdent(write->port.get())) {
+    write->port = New<ASTExpr>();
+    write->port->op = ASTExpr::VAR;
+    write->port->ident.reset(new ASTIdent());
+    if (!ParseIdent(write->port->ident.get())) {
         return false;
     }
-    write->port->type = ASTIdent::VAR;
     if (!Consume(Token::COMMA)) {
         return false;
     }

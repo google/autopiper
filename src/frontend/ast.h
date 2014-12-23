@@ -211,7 +211,7 @@ struct ASTStmtContinue : public ASTBase {
 };
 
 struct ASTStmtWrite : public ASTBase {
-    ASTRef<ASTIdent> port;
+    ASTRef<ASTExpr> port;
     ASTRef<ASTExpr> rhs;
 };
 

@@ -160,6 +160,40 @@ void TypeInferPass::SumWidths(
     }
 }
 
+void TypeInferPass::ConveyPort(InferenceNode* port_node, InferenceNode* value_node) {
+    value_node->inputs_.push_back(
+        make_pair(
+            [](const vector<InferredType>& args) {
+                if (args[0].is_port) {
+                    InferredType ret = args[0];
+                    ret.is_port = false;
+                    return ret;
+                } else {
+                    InferredType conflict;
+                    conflict.type = InferredType::CONFLICT;
+                    conflict.conflict_msg =
+                        "Port type mismatch";
+                    return conflict;
+                }
+            }, vector<InferenceNode*> { port_node }));
+
+    port_node->inputs_.push_back(
+        make_pair(
+            [](const vector<InferredType>& args) {
+                if (!args[0].is_port) {
+                    InferredType ret = args[0];
+                    ret.is_port = true;
+                    return ret;
+                } else {
+                    InferredType conflict;
+                    conflict.type = InferredType::CONFLICT;
+                    conflict.conflict_msg =
+                        "Port type mismatch";
+                    return conflict;
+                }
+            }, vector<InferenceNode*> { value_node }));
+}
+
 void TypeInferPass::EnsureSimple(InferenceNode* n) {
     Location loc = n->loc;
     n->validators_.push_back(
@@ -288,24 +322,9 @@ bool TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
             break;
         }
 
-        case ASTExpr::PORTREAD: {
-            n->inputs_.push_back(
-                    make_pair(
-                        [](const vector<InferredType>& args) {
-                            if (args[0].is_port) {
-                                InferredType ret = args[0];
-                                ret.is_port = false;
-                                return ret;
-                            } else {
-                                InferredType conflict;
-                                conflict.type = InferredType::CONFLICT;
-                                conflict.conflict_msg =
-                                    "Port read from non-port";
-                                return conflict;
-                            }
-                        }, arg_types));
+        case ASTExpr::PORTREAD:
+            ConveyPort(arg_types[0], n);
             break;
-        }
 
         case ASTExpr::PORTDEF:
             break;
@@ -354,6 +373,33 @@ bool TypeInferPass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
     InferenceNode* rhs_node = NodeForAST(node->rhs.get());
     ConveyType(n, rhs_node);
     ConveyType(rhs_node, n);
+    return true;
+}
+
+bool TypeInferPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
+    InferenceNode* lhs = NodeForAST(node->lhs.get());
+    InferenceNode* rhs = NodeForAST(node->rhs.get());
+    ConveyType(lhs, rhs);
+    ConveyType(rhs, lhs);
+    return true;
+}
+
+bool TypeInferPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
+    InferenceNode* port = NodeForAST(node->port.get());
+    InferenceNode* rhs = NodeForAST(node->rhs.get());
+    ConveyPort(port, rhs);
+    return true;
+}
+
+bool TypeInferPass::ModifyASTStmtIfPost(ASTRef<ASTStmtIf>& node) {
+    InferenceNode* condition = NodeForAST(node->condition.get());
+    ConveyConstType(condition, InferredType(1));
+    return true;
+}
+
+bool TypeInferPass::ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node) {
+    InferenceNode* condition = NodeForAST(node->condition.get());
+    ConveyConstType(condition, InferredType(1));
     return true;
 }
 

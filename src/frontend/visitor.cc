@@ -49,7 +49,9 @@ VISIT(ASTFunctionDef, {
     for (auto& param : node->params) {
         CHECK(VisitASTParam(param.get(), context));
     }
-    CHECK(VisitASTStmtBlock(node->block.get(), context));
+    if (node->block) {
+        CHECK(VisitASTStmtBlock(node->block.get(), context));
+    }
 })
 
 VISIT(ASTTypeDef, {
@@ -139,7 +141,7 @@ VISIT(ASTStmtContinue, {
 })
 
 VISIT(ASTStmtWrite, {
-    CHECK(VisitASTIdent(node->port.get(), context));
+    CHECK(VisitASTExpr(node->port.get(), context));
     CHECK(VisitASTExpr(node->rhs.get(), context));
 })
 
@@ -211,7 +213,9 @@ MODIFY(ASTFunctionDef, {
     for (int i = 0; i < node->params.size(); i++) {
         FIELD(node->params[i], ASTParam);
     }
-    FIELD(node->block, ASTStmtBlock);
+    if (node->block) {
+        FIELD(node->block, ASTStmtBlock);
+    }
 })
 
 MODIFY(ASTTypeDef, {
@@ -301,7 +305,7 @@ MODIFY(ASTStmtContinue, {
 })
 
 MODIFY(ASTStmtWrite, {
-    FIELD(node->port, ASTIdent);
+    FIELD(node->port, ASTExpr);
     FIELD(node->rhs, ASTExpr);
 })
 

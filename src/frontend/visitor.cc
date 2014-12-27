@@ -154,7 +154,9 @@ VISIT(ASTStmtWrite, {
 })
 
 VISIT(ASTStmtSpawn, {
-    CHECK(VisitASTStmt(node->body.get(), context));
+    if (node->body) {
+        CHECK(VisitASTStmt(node->body.get(), context));
+    }
 })
 
 VISIT(ASTStmtReturn, {
@@ -326,7 +328,9 @@ MODIFY(ASTStmtWrite, {
 })
 
 MODIFY(ASTStmtSpawn, {
-    FIELD(node->body, ASTStmt);
+    if (node->body) {
+        FIELD(node->body, ASTStmt);
+    }
 })
 
 MODIFY(ASTStmtReturn, {

@@ -16,6 +16,13 @@ func entry main() : void {
     let global_out : port int32 = port "global_out";
     let anon_port : port int32 = port;
 
+    spawn while (1) {
+        let local_in : port int32 = port "local_in";
+        let local_out : port int32 = port "local_out";
+        let x = read local_in;
+        write local_out, x;
+    }
+
     let val1 = my_func(read global_in, read global_in);
     let int32_val = read global_in;
     let val2 = my_func(int32_val, plus1(int32_val));
@@ -24,7 +31,7 @@ func entry main() : void {
     let y = x;
     while (y > 0) {
         write global_out, y;
-        if (y & 1) {
+        if ((y & 1) != 0) {
             write anon_port, 1;
         } else {
             write anon_port, 0;

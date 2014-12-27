@@ -114,6 +114,8 @@ bool InlineFunctionBody(
     ASTRef<ASTStmtWhile> while_stmt(new ASTStmtWhile());
     while_stmt->label = ASTGenSym(ast);
     while_stmt->condition.reset(new ASTExpr(1));
+    while_stmt->condition->op = ASTExpr::CONST;
+    while_stmt->condition->constant = 1;
     while_stmt->body.reset(new ASTStmt());
     while_stmt->body->block.reset(new ASTStmtBlock());
 

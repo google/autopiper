@@ -35,7 +35,11 @@ InferredType InferredType::Meet(const InferredType& other) const {
                other.type == InferredType::CONFLICT) {
         InferredType ret;
         ret.type = InferredType::CONFLICT;
-        ret.conflict_msg = this->conflict_msg + "; " + other.conflict_msg;
+        if (this->type == InferredType::CONFLICT) {
+            ret.conflict_msg = this->conflict_msg;
+        } else {
+            ret.conflict_msg = other.conflict_msg;
+        }
         return ret;
     } else if (this->type == InferredType::EXPANDING_CONST &&
                other.type == InferredType::EXPANDING_CONST) {
@@ -72,13 +76,24 @@ InferredType InferredType::Meet(const InferredType& other) const {
         } else {
             InferredType conflict;
             conflict.type = InferredType::CONFLICT;
-            conflict.conflict_msg = strprintf(
-                    "Type conflict: aggregate type '%s' vs. '%s', width "
-                    "%d vs. %d, port %d vs. %d, array %d vs. %d",
+            conflict.conflict_msg = "Type conflict";
+            if (this->agg != other.agg) {
+                conflict.conflict_msg += strprintf(", aggregate type '%s' vs. '%s'",
                     this->agg ? this->agg->ident->name.c_str() : "",
-                    other.agg ? other.agg->ident->name.c_str() : "",
-                    this->width, other.width, this->is_port, other.is_port,
+                    other.agg ? other.agg->ident->name.c_str() : "");
+            }
+            if (this->width != other.width) {
+                conflict.conflict_msg += strprintf(", width: %d vs. %d",
+                    this->width, other.width);
+            }
+            if (this->is_port != other.is_port) {
+                conflict.conflict_msg += strprintf(", is_port: %d vs. %d",
+                        this->is_port, other.is_port);
+            }
+            if (this->is_array != other.is_array) {
+                conflict.conflict_msg += strprintf(", is_array: %d vs. %d",
                     this->is_array, other.is_array);
+            }
             return conflict;
         }
     }

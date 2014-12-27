@@ -403,27 +403,69 @@ bool TypeInferPass::ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node) {
     return true;
 }
 
+static void AddNodeAndDeps(const InferenceNode* node,
+        set<const InferenceNode*>* s) {
+    if (s->find(node) != s->end()) {
+        return;
+    }
+    s->insert(node);
+    for (auto& p : node->inputs_) {
+        for (auto& n : p.second) {
+            AddNodeAndDeps(n, s);
+        }
+    }
+}
+
 bool TypeInferPass::Infer(ErrorCollector* coll) {
+
+    // Maximum iterations to converge, per graph node.
+    static const int kMaxTypeItersPerNode = 10;
+
     // For each node, perform an update. Keep going as long as any change is
     // observed. (Node values take from a lattice with finite height, so this
     // process cannot continue forever.)
     bool changed = true;
+    unsigned iters = 0;
+    bool failed = false;
     while (changed) {
         changed = false;
         for (auto& node : nodes_) {
             if (node->Update()) {
                 changed = true;
+                if (node->type_.type == InferredType::CONFLICT) {
+                    failed = true;
+                    break;
+                }
             }
         }
+        if (iters > kMaxTypeItersPerNode * nodes_.size()) {
+            failed = true;
+            break;
+        }
+        iters++;
     }
 
     // Now validate the result.
     for (auto& node : nodes_) {
         if (!node->Validate(coll)) {
-            return false;
+            failed = true;
         }
     }
-    return true;
+
+    // If there were any failures, add the error messages from conflicts.
+    set<const InferenceNode*> already_added;
+    if (failed) {
+        for (auto& node : nodes_) {
+            if (node->type_.type == InferredType::CONFLICT &&
+                already_added.find(node.get()) == already_added.end()) {
+                coll->ReportError(node->loc, ErrorCollector::ERROR,
+                        node->type_.conflict_msg);
+                AddNodeAndDeps(node.get(), &already_added);
+            }
+        }
+    }
+
+    return !failed;
 }
 
 }  // namesapce frontend

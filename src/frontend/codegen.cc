@@ -86,10 +86,12 @@ bool CodeGenPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
 
 bool CodeGenPass::ModifyASTFunctionDefPost(ASTRef<ASTFunctionDef>& node) {
     // Add a 'kill' at the end in case the function body did not.
-    unique_ptr<IRStmt> kill_stmt(new IRStmt());
-    kill_stmt->valnum = ctx_->Valnum();
-    kill_stmt->type = IRStmtKill;
-    ctx_->AddIRStmt(ctx_->CurBB(), move(kill_stmt));
+    if (node->block) {
+        unique_ptr<IRStmt> kill_stmt(new IRStmt());
+        kill_stmt->valnum = ctx_->Valnum();
+        kill_stmt->type = IRStmtKill;
+        ctx_->AddIRStmt(ctx_->CurBB(), move(kill_stmt));
+    }
     return true;
 }
 
@@ -229,6 +231,7 @@ bool CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                     export_stmt->valnum = ctx_->Valnum();
                     export_stmt->type = IRStmtPortExport;
                     export_stmt->port_name = node->ident->name;
+                    export_stmt->width = node->inferred_type.width;
                     ctx_->AddIRStmt(ctx_->CurBB(), move(export_stmt));
                 } else {
                     // Anonymous port: give it a name, but don't mark it as
@@ -255,10 +258,9 @@ bool CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 break;
             }
             case ASTExpr::STMTBLOCK: {
-                // Do codegen for the block -- must be a single-entrance,
-                // single-exit region, so we'll be left with a valid CurBB
-                // after this -- finding and extracting the value of its last
-                // stmt (which must be an Expr stmt).
+                // the block will have already been codegen'd during visit,
+                // since we're in a post-hook, so we merely have to find the
+                // right expression statement and use its value as the result.
                 const ASTStmtExpr* expr_value = nullptr;
                 if (node->stmt->stmts.size() < 1 ||
                     !node->stmt->stmts.back()->expr) {
@@ -268,16 +270,6 @@ bool CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                     return false;
                 }
                 expr_value = node->stmt->stmts.back()->expr.get();
-
-                // We use a separate pass to isolate state, such as the current
-                // loop nest -- the expression should truly be a single-in,
-                // single-out region with one return value.
-                CodeGenPass subpass(Errors(), ctx_);
-                ASTVisitor subvisitor;
-                if (!subvisitor.ModifyASTStmtBlock(node->stmt, &subpass)) {
-                    return false;
-                }
-                node->stmt.reset(nullptr);
 
                 // Associate the final expression statement's value with this
                 // whole expression's value.
@@ -510,25 +502,25 @@ bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
     ASTVisitor visitor;
 
     loop_frames_.push_back({});
-    LoopFrame& frame = loop_frames_.back();
-    frame.while_block = node.get();
-    frame.overlay_depth = ctx_->Bindings().Level();
+    LoopFrame* frame = &loop_frames_.back();
+    frame->while_block = node.get();
+    frame->overlay_depth = ctx_->Bindings().Level();
     ctx_->Bindings().Push();
 
     // Create header and footer.
-    frame.header = ctx_->AddBB("while_header_");
-    frame.footer = ctx_->AddBB("while_footer_");
+    frame->header = ctx_->AddBB("while_header_");
+    frame->footer = ctx_->AddBB("while_footer_");
 
     // Add a jump from current block to header.
-    frame.in_bb = ctx_->CurBB();
+    frame->in_bb = ctx_->CurBB();
     unique_ptr<IRStmt> in_jmp(new IRStmt());
     in_jmp->valnum = ctx_->Valnum();
     in_jmp->type = IRStmtJmp;
-    in_jmp->targets.push_back(frame.header);
-    in_jmp->target_names.push_back(frame.header->label);
+    in_jmp->targets.push_back(frame->header);
+    in_jmp->target_names.push_back(frame->header->label);
     ctx_->AddIRStmt(ctx_->CurBB(), move(in_jmp));
 
-    ctx_->SetCurBB(frame.header);
+    ctx_->SetCurBB(frame->header);
 
     // Generate phis for all bindings in the current scope. Note that we do
     // this in order to have a single-pass algorithm without fixups -- if we
@@ -559,8 +551,8 @@ bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
         phi_node->type = IRStmtPhi;
         phi_node->valnum = ctx_->Valnum();
         phi_node->width = binding->inferred_type.width;
-        phi_node->targets.push_back(frame.in_bb);
-        phi_node->target_names.push_back(frame.in_bb->label);
+        phi_node->targets.push_back(frame->in_bb);
+        phi_node->target_names.push_back(frame->in_bb->label);
         phi_node->args.push_back(binding_ir);
         phi_node->arg_nums.push_back(binding_ir->valnum);
 
@@ -568,7 +560,7 @@ bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
         ASTRef<ASTExpr> ast_expr(new ASTExpr());
         ast_expr->op = ASTExpr::NOP;
         ast_expr->inferred_type = binding->inferred_type;
-        ctx_->AddIRStmt(frame.header, move(phi_node), ast_expr.get());
+        ctx_->AddIRStmt(frame->header, move(phi_node), ast_expr.get());
         ctx_->Bindings().Set(let, ast_expr.get());
         ctx_->ast()->ir_exprs.push_back(move(ast_expr));
     }
@@ -582,6 +574,10 @@ bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
     // Clear the expr so that ordinary traversal won't try to re-generate it.
     node->condition.reset(nullptr);
 
+    // Re-establish |frame| -- recursive visit may have modified loop-frame
+    // stack and re-allocated the stack storage.
+    frame = &loop_frames_.back();
+
     // Create the first actual body BB.
     IRBB* body_bb = ctx_->AddBB("while_body_");
 
@@ -593,15 +589,15 @@ bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
     loop_cond_br->arg_nums.push_back(loop_cond_br_arg->valnum);
     loop_cond_br->targets.push_back(body_bb);
     loop_cond_br->target_names.push_back(body_bb->label);
-    loop_cond_br->targets.push_back(frame.footer);
-    loop_cond_br->target_names.push_back(frame.footer->label);
-    ctx_->AddIRStmt(frame.header, move(loop_cond_br));
+    loop_cond_br->targets.push_back(frame->footer);
+    loop_cond_br->target_names.push_back(frame->footer->label);
+    ctx_->AddIRStmt(frame->header, move(loop_cond_br));
 
     // Add the implicit 'break' edge from the header to the footer due to the
     // exit condition.
-    frame.break_edges.insert(make_pair(
-                frame.header,
-                ctx_->Bindings().Overlay(frame.overlay_depth)));
+    frame->break_edges.insert(make_pair(
+                frame->header,
+                ctx_->Bindings().Overlay(frame->overlay_depth)));
 
 
     // Generate loop body starting at the body BB.
@@ -612,23 +608,27 @@ bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
     // Clear the body so that ordinary traversal won't try to re-generate it.
     node->body.reset(nullptr);
 
+    // Re-establish |frame| -- recursive visit may have modified loop-frame
+    // stack and re-allocated the stack storage.
+    frame = &loop_frames_.back();
+
     // Add the implicit 'continue' jmp at the end of the body.
     IRBB* body_end_bb = ctx_->CurBB();
     unique_ptr<IRStmt> final_continue_jmp(new IRStmt());
     final_continue_jmp->valnum = ctx_->Valnum();
     final_continue_jmp->type = IRStmtJmp;
-    final_continue_jmp->targets.push_back(frame.header);
-    final_continue_jmp->target_names.push_back(frame.header->label);
+    final_continue_jmp->targets.push_back(frame->header);
+    final_continue_jmp->target_names.push_back(frame->header->label);
     ctx_->AddIRStmt(body_end_bb, move(final_continue_jmp));
 
     // Add the implicit 'continue' edge with bindings so that the phis will be
     // updated.
-    frame.continue_edges.insert(make_pair(
+    frame->continue_edges.insert(make_pair(
                 body_end_bb,
-                ctx_->Bindings().Overlay(frame.overlay_depth)));
+                ctx_->Bindings().Overlay(frame->overlay_depth)));
 
     // Restore the binding stack to its earlier level.
-    while (ctx_->Bindings().Level() > frame.overlay_depth) {
+    while (ctx_->Bindings().Level() > frame->overlay_depth) {
         ctx_->Bindings().Pop();
     }
 
@@ -638,17 +638,17 @@ bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
     // implicit 'break on loop condition false' edge we added above.
     if (!AddWhileLoopPhiNodeInputs(
                 node.get(), ctx_,
-                binding_phis, frame.continue_edges)) {
+                binding_phis, frame->continue_edges)) {
         return false;
     }
     if (!AddWhileLoopPhiNodeInputs(
                 node.get(), ctx_,
-                binding_phis, frame.break_edges)) {
+                binding_phis, frame->break_edges)) {
         return false;
     }
 
     // Set the footer as current -- this is our single exit point.
-    ctx_->SetCurBB(frame.footer);
+    ctx_->SetCurBB(frame->footer);
 
     // Pop the loop frame.
     loop_frames_.pop_back();
@@ -729,9 +729,43 @@ bool CodeGenPass::ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node) {
 // Spawn support.
 
 bool CodeGenPass::ModifyASTStmtSpawnPre(ASTRef<ASTStmtSpawn>& node) {
-    // TODO
-    assert(false);
-    return false;
+    ASTVisitor visitor;
+
+    IRBB* cur_bb = ctx_->CurBB();
+
+    // Start a new BB for the spawned path.
+    IRBB* spawn_bb = ctx_->AddBB("spawn_");
+
+    // Produce the spawn statement itself.
+    unique_ptr<IRStmt> spawn_stmt(new IRStmt());
+    spawn_stmt->valnum = ctx_->Valnum();
+    spawn_stmt->type = IRStmtSpawn;
+    spawn_stmt->targets.push_back(spawn_bb);
+    spawn_stmt->target_names.push_back(spawn_bb->label);
+    ctx_->AddIRStmt(ctx_->CurBB(), move(spawn_stmt));
+
+    // Generate the spawn-path's code.
+    ctx_->SetCurBB(spawn_bb);
+    // Start a new binding context for this path.
+    ctx_->Bindings().Push();
+    if (!visitor.ModifyASTStmt(node->body, this)) {
+        return false;
+    }
+    ctx_->Bindings().Pop();
+    // Ensure that the spawn-path ends with a 'kill'.
+    unique_ptr<IRStmt> kill_stmt(new IRStmt());
+    kill_stmt->valnum = ctx_->Valnum();
+    kill_stmt->type = IRStmtKill;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(kill_stmt));
+    // Remove the spawn body so that this visit traversal doesn't re-generate
+    // the code.
+    node->body.reset(nullptr);
+
+    // Re-set the output path (current BB) to the BB to which we added the
+    // 'spawn' -- codegen continues on the fallthrough path.
+    ctx_->SetCurBB(cur_bb);
+
+    return true;
 }
 
 }  // namespace frontend

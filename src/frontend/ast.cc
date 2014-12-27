@@ -41,7 +41,7 @@ static string Indent(int indent) {
 #define P(subnode, incr) PrintAST(subnode, out, indent + incr)
 
 AST_PRINTER(AST) {
-    out << I(0) << "(ast" << endl;
+    out << I(0) << "(ast " << node << endl;
     out << I(1) << "(gencounter " << node->gencounter << ")" << endl;
     for (auto& type : node->types) {
         P(type.get(), 1);
@@ -53,7 +53,7 @@ AST_PRINTER(AST) {
 }
 
 AST_PRINTER(ASTFunctionDef) {
-    out << I(0) << "(func" << endl;
+    out << I(0) << "(func " << node << endl;
 
     out << I(1) << "(name ";
     P(node->name.get(), 2);
@@ -76,7 +76,7 @@ AST_PRINTER(ASTFunctionDef) {
 }
 
 AST_PRINTER(ASTTypeDef) {
-    out << I(0) << "(typedef" << endl;
+    out << I(0) << "(typedef " << node << endl;
     out << I(1) << "(ident ";
     P(node->ident.get(), 1);
     out << ")" << endl;
@@ -118,7 +118,7 @@ AST_PRINTER(ASTParam) {
 }
 
 AST_PRINTER(ASTStmt) {
-    out << I(0) << "(stmt " << endl;
+    out << I(0) << "(stmt " << node << endl;
 #define T(type)                 \
     if (node->type)             \
         P(node->type.get(), 1)
@@ -138,7 +138,7 @@ AST_PRINTER(ASTStmt) {
 }
 
 AST_PRINTER(ASTStmtBlock) {
-    out << I(0) << "(stmt-block" << endl;
+    out << I(0) << "(stmt-block " << node << endl;
     for (auto& stmt : node->stmts) {
         P(stmt.get(), 1);
     }
@@ -146,7 +146,7 @@ AST_PRINTER(ASTStmtBlock) {
 }
 
 AST_PRINTER(ASTStmtLet) {
-    out << I(0) << "(stmt-let" << endl;
+    out << I(0) << "(stmt-let " << node << endl;
     out << I(1) << "(lhs ";
     P(node->lhs.get(), 2);
     out << ")" << endl;
@@ -162,7 +162,7 @@ AST_PRINTER(ASTStmtLet) {
 }
 
 AST_PRINTER(ASTStmtAssign) {
-    out << I(0) << "(stmt-assign" << endl;
+    out << I(0) << "(stmt-assign " << node << endl;
     out << I(1) << "(lhs " << endl;
     P(node->lhs.get(), 2);
     out << I(1) << ")" << endl;
@@ -173,7 +173,7 @@ AST_PRINTER(ASTStmtAssign) {
 }
 
 AST_PRINTER(ASTStmtIf) {
-    out << I(0) << "(stmt-if" << endl;
+    out << I(0) << "(stmt-if " << node << endl;
     out << I(1) << "(condition" << endl;
     P(node->condition.get(), 2);
     out << I(1) << ")" << endl;
@@ -189,7 +189,7 @@ AST_PRINTER(ASTStmtIf) {
 }
 
 AST_PRINTER(ASTStmtWhile) {
-    out << I(0) << "(stmt-while" << endl;
+    out << I(0) << "(stmt-while " << node << endl;
     if (node->label) {
         out << I(1) << "(label ";
         P(node->label.get(), 2);
@@ -205,7 +205,7 @@ AST_PRINTER(ASTStmtWhile) {
 }
 
 AST_PRINTER(ASTStmtBreak) {
-    out << I(0) << "(stmt-break";
+    out << I(0) << "(stmt-break " << node << " ";
     if (node->label) {
         out << " ";
         P(node->label.get(), 1);
@@ -214,7 +214,7 @@ AST_PRINTER(ASTStmtBreak) {
 }
 
 AST_PRINTER(ASTStmtContinue) {
-    out << I(0) << "(stmt-continue";
+    out << I(0) << "(stmt-continue " << node << " ";
     if (node->label) {
         out << " ";
         P(node->label.get(), 1);
@@ -223,7 +223,7 @@ AST_PRINTER(ASTStmtContinue) {
 }
 
 AST_PRINTER(ASTStmtWrite) {
-    out << I(0) << "(stmt-write" << endl;
+    out << I(0) << "(stmt-write " << node << endl;
     out << I(1) << "(port" << endl;
     P(node->port.get(), 2);
     out << I(1) << ")" << endl;;
@@ -234,25 +234,25 @@ AST_PRINTER(ASTStmtWrite) {
 }
 
 AST_PRINTER(ASTStmtSpawn) {
-    out << I(0) << "(stmt-spawn" << endl;
+    out << I(0) << "(stmt-spawn " << node << endl;
     P(node->body.get(), 1);
     out << I(0) << ")" << endl;
 }
 
 AST_PRINTER(ASTStmtReturn) {
-    out << I(0) << "(stmt-return" << endl;
+    out << I(0) << "(stmt-return " << node << endl;
     P(node->value.get(), 1);
     out << I(0) << ")" << endl;
 }
 
 AST_PRINTER(ASTStmtExpr) {
-    out << I(0) << "(stmt-expr" << endl;
+    out << I(0) << "(stmt-expr " << node << endl;
     P(node->expr.get(), 1);
     out << I(0) << ")" << endl;
 }
 
 AST_PRINTER(ASTExpr) {
-    out << I(0) << "(expr ";
+    out << I(0) << "(expr " << node << " ";
     switch (node->op) {
 #define T(type)               \
         case ASTExpr:: type : \

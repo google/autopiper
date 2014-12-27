@@ -59,7 +59,7 @@ class CodeGenScope {
             scopes_.back().bindings[k] = v;
         }
 
-        bool Has(const K& k) {
+        bool Has(const K& k) const {
             for (int i = scopes_.size() - 1; i >= 0; --i) {
                 auto m = scopes_[i].bindings;
                 auto it = m.find(k);
@@ -77,6 +77,30 @@ class CodeGenScope {
         void Pop() {
             scopes_.pop_back();
             assert(!scopes_.empty());
+        }
+
+        int Level() const {
+            return scopes_.size();
+        }
+
+        std::map<K, V> Overlay(int from_level) const {
+            std::map<K, V> ret;
+            for (int i = from_level; i < scopes_.size(); i++) {
+                for (auto& p : scopes_[i].bindings) {
+                    ret[p.first] = p.second;
+                }
+            }
+            return ret;
+        }
+
+        std::set<K> Keys() const {
+            std::set<K> ret;
+            for (auto& scope : scopes_) {
+                for (auto& p : scope.bindings) {
+                    ret.insert(p.first);
+                }
+            }
+            return ret;
         }
 
         std::map<K, V> ReleasePop() {
@@ -135,10 +159,13 @@ class CodeGenScope {
         std::vector<Scope> scopes_;
 };
 
+class CodeGenLoopHandler;
+
 class CodeGenContext {
     public:
-        CodeGenContext();
+        CodeGenContext(AST* ast);
 
+        AST* ast() { return ast_; }
         std::unique_ptr<IRProgram> Release() { return std::move(prog_); }
 
         // Generate a new temporary symbol.
@@ -150,7 +177,7 @@ class CodeGenContext {
         // the code generated up to this point.
         IRBB* CurBB() { return curbb_; }
         void SetCurBB(IRBB* bb) { curbb_ = bb; }
-        IRBB* AddBB();
+        IRBB* AddBB(const char* label_prefix = nullptr);
 
         // The current set of variable bindings is maintained as a 'let ->
         // expr' mapping. (Yes, I know, in a Real Functional Language a let
@@ -184,9 +211,12 @@ class CodeGenContext {
         int gensym_;
         IRBB* curbb_;
         std::map<const ASTExpr*, IRStmt*> expr_to_ir_map_;
+        AST* ast_;
 
         CodeGenScope<ASTStmtLet*, const ASTExpr*> bindings_;
 };
+
+typedef std::map<ASTStmtLet*, const ASTExpr*> SubBindingMap;
 
 // A CodeGenPass traverses some subtree (or possibly the whole tree) of the
 // AST, emitting code to a given CodeGenContext.
@@ -209,6 +239,9 @@ class CodeGenPass : public ASTVisitorContext {
         // pre-hook on function: determine whether we'll do codegen or not, and
         // remove the function body if not.
         virtual bool ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node);
+
+        // post-hook on function: end with a 'kill'.
+        virtual bool ModifyASTFunctionDefPost(ASTRef<ASTFunctionDef>& node);
 
         // straight-line-code statement codegen hooks. We do codegen after
         // sub-stmts because exprs in the stmt must be gen'd first.
@@ -247,6 +280,27 @@ class CodeGenPass : public ASTVisitorContext {
         CodeGenContext* ctx_;
 
         const ASTExpr* FindPortDef(const ASTExpr* node, const ASTExpr* orig);
+
+        struct LoopFrame {
+            ASTStmtWhile* while_block;
+            int overlay_depth;
+            std::map<IRBB*, SubBindingMap> break_edges;
+            std::map<IRBB*, SubBindingMap> continue_edges;
+            IRBB* header;
+            IRBB* footer;
+            // BB that jumps to (falls into) header. Used for phi generation.
+            IRBB* in_bb;
+        };
+        std::vector<LoopFrame> loop_frames_;
+
+        LoopFrame* FindLoopFrame(const ASTBase* node, const ASTIdent* label);
+        bool AddWhileLoopPhiNodeInputs(
+                const ASTBase* node, CodeGenContext* ctx,
+                std::map<ASTStmtLet*, IRStmt*>& binding_phis,
+                std::map<IRBB*, SubBindingMap>& in_edges);
+        void HandleBreakContinue(LoopFrame* frame,
+                std::map<IRBB*, SubBindingMap>& edge_map,
+                IRBB* target);
 };
 
 }  // namespace frontend

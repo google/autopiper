@@ -74,7 +74,7 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
         PrintAST(ast.get(), cout);
     }
 
-    CodeGenContext codegen_ctx;
+    CodeGenContext codegen_ctx(ast.get());
     CodeGenPass codegen_pass(collector, &codegen_ctx);
     ASTVisitor codegen_visitor;
     if (!codegen_visitor.ModifyAST(ast, &codegen_pass)) {

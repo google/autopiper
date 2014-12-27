@@ -26,10 +26,11 @@ namespace frontend {
 
 // -------------------------- CodeGenContext ----------------------------------
 
-CodeGenContext::CodeGenContext() {
+CodeGenContext::CodeGenContext(AST* ast) {
     prog_.reset(new IRProgram());
     gensym_ = 1;
     curbb_ = nullptr;
+    ast_ = ast;
 }
 
 std::string CodeGenContext::GenSym() {
@@ -39,9 +40,14 @@ std::string CodeGenContext::GenSym() {
     return os.str();
 }
 
-IRBB* CodeGenContext::AddBB() {
+IRBB* CodeGenContext::AddBB(const char* label_prefix) {
     unique_ptr<IRBB> bb(new IRBB());
-    bb->label = GenSym();
+    if (label_prefix) {
+        bb->label = label_prefix;
+        bb->label += GenSym();
+    } else {
+        bb->label = GenSym();
+    }
     IRBB* ret = bb.get();
     prog_->bbs.push_back(move(bb));
     return ret;
@@ -75,6 +81,15 @@ bool CodeGenPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
     bb->is_entry = true;
     ctx_->SetCurBB(bb);
 
+    return true;
+}
+
+bool CodeGenPass::ModifyASTFunctionDefPost(ASTRef<ASTFunctionDef>& node) {
+    // Add a 'kill' at the end in case the function body did not.
+    unique_ptr<IRStmt> kill_stmt(new IRStmt());
+    kill_stmt->valnum = ctx_->Valnum();
+    kill_stmt->type = IRStmtKill;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(kill_stmt));
     return true;
 }
 
@@ -254,6 +269,9 @@ bool CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 }
                 expr_value = node->stmt->stmts.back()->expr.get();
 
+                // We use a separate pass to isolate state, such as the current
+                // loop nest -- the expression should truly be a single-in,
+                // single-out region with one return value.
                 CodeGenPass subpass(Errors(), ctx_);
                 ASTVisitor subvisitor;
                 if (!subvisitor.ModifyASTStmtBlock(node->stmt, &subpass)) {
@@ -287,19 +305,16 @@ bool CodeGenPass::ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node) {
 // If-statement support.
 
 bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
-    // We need a subpass to do manual codegen for our subordinate parts. It
-    // shares our context.
-    CodeGenPass subpass(Errors(), ctx_);
     ASTVisitor visitor;
 
     // Create two BBs for the if- and else-bodies respectively.
-    IRBB* if_body = ctx_->AddBB();
-    IRBB* else_body = ctx_->AddBB();
+    IRBB* if_body = ctx_->AddBB("if_body_");
+    IRBB* else_body = ctx_->AddBB("else_body_");
 
     // Generate the conditional explicitly -- since we're a pre-hook (so that
     // we can control if-/else-body generation), we don't get this for free as
     // the post-hooks do.
-    if (!visitor.ModifyASTExpr(node->condition, &subpass)) {
+    if (!visitor.ModifyASTExpr(node->condition, this)) {
         return false;
     }
     IRStmt* conditional = ctx_->GetIRStmt(node->condition.get());
@@ -322,7 +337,7 @@ bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
     
     ctx_->Bindings().Push();
     ctx_->SetCurBB(if_body);
-    if (!visitor.ModifyASTStmt(node->if_body, &subpass)) {
+    if (!visitor.ModifyASTStmt(node->if_body, this)) {
         return false;
     }
     auto if_bindings = ctx_->Bindings().ReleasePop();
@@ -333,7 +348,7 @@ bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
     ctx_->Bindings().Push();
     ctx_->SetCurBB(else_body);
     if (node->else_body) {
-        if (!visitor.ModifyASTStmt(node->else_body, &subpass)) {
+        if (!visitor.ModifyASTStmt(node->else_body, this)) {
             return false;
         }
     }
@@ -344,7 +359,7 @@ bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
     // current BB (so that at exit, we leave the current BB set to our single
     // exit point), (ii) generate the jumps from each side of the diamond to
     // the merge point, and (iii) insert phis for all overwritten bindings.
-    IRBB* merge_bb = ctx_->AddBB();
+    IRBB* merge_bb = ctx_->AddBB("if_else_merge_");
     ctx_->SetCurBB(merge_bb);
 
     unique_ptr<IRStmt> if_end_jmp(new IRStmt());
@@ -371,6 +386,14 @@ bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
         IRStmt* if_val = ctx_->GetIRStmt(sub_bindings[0]);
         IRStmt* else_val = ctx_->GetIRStmt(sub_bindings[1]);
 
+        if (!if_val || !else_val) {
+            Error(node.get(),
+                    "If/else reassigns value without underlying IR "
+                    "representation. This usually occurs when attempting "
+                    "to reassign port variables.");
+            return false;
+        }
+
         unique_ptr<IRStmt> phi_node(new IRStmt());
         phi_node->type = IRStmtPhi;
         phi_node->valnum = ctx_->Valnum();
@@ -386,15 +409,13 @@ bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
 
         IRStmt* new_node = ctx_->AddIRStmt(merge_bb, move(phi_node));
 
-        // This is a bit of a hack: to set the current binding to the phi node,
-        // we overwrite the expr -> IR value mapping for the last binding in
-        // this context. We have to do this because there is no ASTExpr
-        // corresponding to the "merged value" -- the AST doesn't have phi
-        // nodes (it's not SSA). Ideally bindings would be directly to IR
-        // stmts, but there are cases where that becomes a little ugly too.
-        // Eh, this is just a prototype. TODO: Make it cleaner.
-        const ASTExpr* expr_binding = ctx_->Bindings()[let];
-        ctx_->AddIRStmt(new_node, expr_binding);
+        // Create a new dummy ASTExpr to refer to the phi node.
+        unique_ptr<ASTExpr> phi_expr(new ASTExpr());
+        phi_expr->op = ASTExpr::NOP;
+        phi_expr->inferred_type = sub_bindings[0]->inferred_type;
+        ctx_->AddIRStmt(new_node, phi_expr.get());
+        ctx_->Bindings().Set(let, phi_expr.get());
+        ctx_->ast()->ir_exprs.push_back(move(phi_expr));
     }
 
     // Now clear the condition and bodies so that the visit-pass driver does
@@ -408,22 +429,301 @@ bool CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
 
 // While-loop support: while, break, continue
 
+// The key idea of the transform is: each break or continue 'forks' the binding scope
+// (pushes a new binding level), and creates an edge to either the top-of-loop
+// (header block) or the exit block. At the end of the 'while' scope, we pop
+// all the binding scopes, write out a jump to the top-of-loop (header block),
+// and write out phis in the header and exit blocks.
+//
+// Nested whiles with labeled breaks/continues necessitate some slightly more
+// complex bookkeeping: in the CodeGenContext itself, we keep a map from open
+// 'while' scope to its data. Its data includes the current set of "up-exits"
+// (continues) and "down-exits" (breaks). These lists may be amended while
+// within nested whiles, for example, so it's important that all be available
+// for update up the lexical stack. Each exit edge carries a copy of the
+// binding map from the top of the associated loop to that point. Such a map
+// may be constructed by merging maps down the lexical scope stack: each
+// 'while'-loop record should also record a copy of the binding map at its own
+// start point relative to the next enclosing loop.
+//
+// The code layout is:
+//
+// /---------------------------------------------------------\
+// | header                                                  | <-\
+// | (phi joins: all continue edges and fallthrough in-edge) |   |
+// | (loop condition check with conditional out to footer)   |   |
+// \---------------------------------------------------------/   |
+//     |                                   ___(continue edges)___/
+//     v                                  /                      |
+//  (loop body region: arbitrarily complex)___(fallthrough edge)_/
+//     |
+//   (break edges)
+//     |
+// /-------------------------------------\
+// | footer (phi joins: all break edges) |
+// \-------------------------------------/
+//
+// N.B. that this structure is our generic low-level loop primitive and the
+// *only* way to build a backedge. Other loop types may be desugared to this.
+// It's also one of only two ways to build a forward edge the skips over code
+// (the other being if-else with one side of the diamond empty); this
+// convenient structure is used to inline functions by desugaring 'return' to a
+// break out of a loop body.
+
+bool CodeGenPass::AddWhileLoopPhiNodeInputs(
+        const ASTBase* node,
+        CodeGenContext* ctx,
+        map<ASTStmtLet*, IRStmt*>& binding_phis,
+        map<IRBB*, SubBindingMap>& in_edges) {
+    vector<IRBB*> in_bbs;
+    vector<SubBindingMap> in_maps;
+    for (auto& p : in_edges) {
+        in_bbs.push_back(p.first);
+        in_maps.push_back(p.second);
+    }
+    map<ASTStmtLet*, vector<const ASTExpr*>> join =
+        ctx->Bindings().JoinOverlays(in_maps);
+    for (auto& p : join) {
+        ASTStmtLet* let = p.first;
+        auto& exprs = p.second;
+        IRStmt* phi_node = binding_phis[let];
+        if (!phi_node) {
+            Error(node,
+                    "Attempt to reassign a value without an IR "
+                    "representation inside a while loop. This usually "
+                    "occurs when attempting to reassign port variables.");
+            return false;
+        }
+        for (unsigned i = 0; i < exprs.size(); i++) {
+            IRStmt* in_val = ctx->GetIRStmt(exprs[i]);
+            IRBB* in_bb = in_bbs[i];
+            phi_node->args.push_back(in_val);
+            phi_node->arg_nums.push_back(in_val->valnum);
+            phi_node->targets.push_back(in_bb);
+            phi_node->target_names.push_back(in_bb->label);
+        }
+    }
+    return true;
+}
+
 bool CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
-    // TODO
-    assert(false);
-    return false;
+    ASTVisitor visitor;
+
+    loop_frames_.push_back({});
+    LoopFrame& frame = loop_frames_.back();
+    frame.while_block = node.get();
+    frame.overlay_depth = ctx_->Bindings().Level();
+    ctx_->Bindings().Push();
+
+    // Create header and footer.
+    frame.header = ctx_->AddBB("while_header_");
+    frame.footer = ctx_->AddBB("while_footer_");
+
+    // Add a jump from current block to header.
+    frame.in_bb = ctx_->CurBB();
+    unique_ptr<IRStmt> in_jmp(new IRStmt());
+    in_jmp->valnum = ctx_->Valnum();
+    in_jmp->type = IRStmtJmp;
+    in_jmp->targets.push_back(frame.header);
+    in_jmp->target_names.push_back(frame.header->label);
+    ctx_->AddIRStmt(ctx_->CurBB(), move(in_jmp));
+
+    ctx_->SetCurBB(frame.header);
+
+    // Generate phis for all bindings in the current scope. Note that we do
+    // this in order to have a single-pass algorithm without fixups -- if we
+    // wanted to have phis only for bindings that were overwritten in the loop
+    // body, then we would either need a pre-pass over the loop to find
+    // assignment statements, or a post-pass to insert phis for overwritten
+    // bindings and fix up all references. This approach we take here will
+    // generate redundant select operations in the output Verilog (e.g.,
+    // condition ? x : x) but these will be optimized away in synthesis, and we
+    // could also do a simple optimization pass to remove these if we really
+    // cared about clean output.
+    //
+    // We'll add inputs to the phis later, after codegen'ing the body, when we
+    // know about all 'continue' edges up to the restart point.
+    set<ASTStmtLet*> bindings = ctx_->Bindings().Keys();
+    map<ASTStmtLet*, IRStmt*> binding_phis;
+    for (auto& let : bindings) {
+        const ASTExpr* binding = ctx_->Bindings()[let];
+        IRStmt* binding_ir = ctx_->GetIRStmt(binding);
+        if (!binding_ir) {
+            // Skip vars without direct IR representation, i.e., ports --
+            // trying to rebind these within a loop body is an error anyway.
+            continue;
+        }
+
+        unique_ptr<IRStmt> phi_node(new IRStmt());
+        binding_phis[let] = phi_node.get();
+        phi_node->type = IRStmtPhi;
+        phi_node->valnum = ctx_->Valnum();
+        phi_node->width = binding->inferred_type.width;
+        phi_node->targets.push_back(frame.in_bb);
+        phi_node->target_names.push_back(frame.in_bb->label);
+        phi_node->args.push_back(binding_ir);
+        phi_node->arg_nums.push_back(binding_ir->valnum);
+
+        // Create a new ASTExpr to refer to phi.
+        ASTRef<ASTExpr> ast_expr(new ASTExpr());
+        ast_expr->op = ASTExpr::NOP;
+        ast_expr->inferred_type = binding->inferred_type;
+        ctx_->AddIRStmt(frame.header, move(phi_node), ast_expr.get());
+        ctx_->Bindings().Set(let, ast_expr.get());
+        ctx_->ast()->ir_exprs.push_back(move(ast_expr));
+    }
+
+    // Generate the loop condition in the current BB (which is the header
+    // block).
+    if (!visitor.ModifyASTExpr(node->condition, this)) {
+        return false;
+    }
+    IRStmt* loop_cond_br_arg = ctx_->GetIRStmt(node->condition.get());
+    // Clear the expr so that ordinary traversal won't try to re-generate it.
+    node->condition.reset(nullptr);
+
+    // Create the first actual body BB.
+    IRBB* body_bb = ctx_->AddBB("while_body_");
+
+    // Generate the loop conditional jmp.
+    unique_ptr<IRStmt> loop_cond_br(new IRStmt());
+    loop_cond_br->valnum = ctx_->Valnum();
+    loop_cond_br->type = IRStmtIf;
+    loop_cond_br->args.push_back(loop_cond_br_arg);
+    loop_cond_br->arg_nums.push_back(loop_cond_br_arg->valnum);
+    loop_cond_br->targets.push_back(body_bb);
+    loop_cond_br->target_names.push_back(body_bb->label);
+    loop_cond_br->targets.push_back(frame.footer);
+    loop_cond_br->target_names.push_back(frame.footer->label);
+    ctx_->AddIRStmt(frame.header, move(loop_cond_br));
+
+    // Add the implicit 'break' edge from the header to the footer due to the
+    // exit condition.
+    frame.break_edges.insert(make_pair(
+                frame.header,
+                ctx_->Bindings().Overlay(frame.overlay_depth)));
+
+
+    // Generate loop body starting at the body BB.
+    ctx_->SetCurBB(body_bb);
+    if (!visitor.ModifyASTStmt(node->body, this)) {
+        return false;
+    }
+    // Clear the body so that ordinary traversal won't try to re-generate it.
+    node->body.reset(nullptr);
+
+    // Add the implicit 'continue' jmp at the end of the body.
+    IRBB* body_end_bb = ctx_->CurBB();
+    unique_ptr<IRStmt> final_continue_jmp(new IRStmt());
+    final_continue_jmp->valnum = ctx_->Valnum();
+    final_continue_jmp->type = IRStmtJmp;
+    final_continue_jmp->targets.push_back(frame.header);
+    final_continue_jmp->target_names.push_back(frame.header->label);
+    ctx_->AddIRStmt(body_end_bb, move(final_continue_jmp));
+
+    // Add the implicit 'continue' edge with bindings so that the phis will be
+    // updated.
+    frame.continue_edges.insert(make_pair(
+                body_end_bb,
+                ctx_->Bindings().Overlay(frame.overlay_depth)));
+
+    // Restore the binding stack to its earlier level.
+    while (ctx_->Bindings().Level() > frame.overlay_depth) {
+        ctx_->Bindings().Pop();
+    }
+
+    // Add in-edges to each phi in the loop header for each continue edge (edge
+    // into the header), including the implicit 'end-of-body continue' we added
+    // above, and for each break edge (edge into the footer), including the
+    // implicit 'break on loop condition false' edge we added above.
+    if (!AddWhileLoopPhiNodeInputs(
+                node.get(), ctx_,
+                binding_phis, frame.continue_edges)) {
+        return false;
+    }
+    if (!AddWhileLoopPhiNodeInputs(
+                node.get(), ctx_,
+                binding_phis, frame.break_edges)) {
+        return false;
+    }
+
+    // Set the footer as current -- this is our single exit point.
+    ctx_->SetCurBB(frame.footer);
+
+    // Pop the loop frame.
+    loop_frames_.pop_back();
+
+    return true;
+}
+
+CodeGenPass::LoopFrame* CodeGenPass::FindLoopFrame(
+        const ASTBase* node, const ASTIdent* label) {
+    if (label) {
+        for (int i = loop_frames_.size() - 1; i >= 0; --i) {
+            LoopFrame* frame = &loop_frames_[i];
+            if (frame->while_block->label &&
+                frame->while_block->label->name == label->name) {
+                return frame;
+            }
+        }
+        Error(node,
+                strprintf("Break/continue with unknown label '%s'",
+                    label->name.c_str()));
+        return nullptr;
+    } else {
+        if (loop_frames_.empty()) {
+            Error(node, "Break/continue not in loop");
+            return nullptr;
+        }
+        return &loop_frames_.back();
+    }
+}
+
+void CodeGenPass::HandleBreakContinue(LoopFrame* frame,
+        map<IRBB*, SubBindingMap>& edge_map, IRBB* target) {
+    // Capture the bindings up to this point.
+    SubBindingMap bindings = ctx_->Bindings().Overlay(frame->overlay_depth);
+    // Create a new binding scope for all bindings created after this 'break'.
+    ctx_->Bindings().Push();
+
+    // Add the break/continue edge to the frame so that when the loop is
+    // closed, this set of bindings is added to the header's or footer's (for
+    // continue or break, respectively) phi nodes.
+    edge_map.insert(make_pair(ctx_->CurBB(), bindings));
+
+    // Generate the jump to the loop's header (continue) or footer (break)
+    // block.
+    unique_ptr<IRStmt> jmp(new IRStmt());
+    jmp->valnum = ctx_->Valnum();
+    jmp->type = IRStmtJmp;
+    jmp->targets.push_back(target);
+    jmp->target_names.push_back(target->label);
+    ctx_->AddIRStmt(ctx_->CurBB(), move(jmp));
+    // Start a new CurBB. This is unreachable but it must be non-null to
+    // maintain our invariant.
+    ctx_->SetCurBB(ctx_->AddBB("unreachable_"));
 }
 
 bool CodeGenPass::ModifyASTStmtBreakPost(ASTRef<ASTStmtBreak>& node) {
-    // TODO
-    assert(false);
-    return false;
+    // Find the loop frame that matches this node's label, if any, or the
+    // topmost one if no label was provided.
+    LoopFrame* frame = FindLoopFrame(node.get(), node->label.get());
+    if (!frame) {
+        return false;
+    }
+    HandleBreakContinue(frame, frame->break_edges, frame->footer);
+    return true;
 }
 
 bool CodeGenPass::ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node) {
-    // TODO
-    assert(false);
-    return false;
+    // Find the loop frame that matches this node's label, if any, or the
+    // topmost one if no label was provided.
+    LoopFrame* frame = FindLoopFrame(node.get(), node->label.get());
+    if (!frame) {
+        return false;
+    }
+    HandleBreakContinue(frame, frame->continue_edges, frame->header);
+    return true;
 }
 
 // Spawn support.

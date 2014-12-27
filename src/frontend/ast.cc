@@ -295,6 +295,8 @@ AST_PRINTER(ASTExpr) {
         T(PORTDEF);
 
         T(STMTBLOCK);
+
+        T(NOP);
 #undef T
     }
 

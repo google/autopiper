@@ -19,5 +19,26 @@ func entry main() : void {
         y = 2;
     }
 
+    while (y > 0) {
+        if (y > 10) {
+            y = y - 2;
+            continue;
+        }
+        if (y == 1) {
+            y = 42;
+            break;
+        }
+        y = 43;
+        if (y == 2) {
+            y = 44;
+            break;
+        }
+        y = 44;
+        if (y == 1) {
+            y = 45;
+            continue;
+        }
+    }
+
     write global_out, y;
 }

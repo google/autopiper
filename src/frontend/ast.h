@@ -81,6 +81,12 @@ struct AST : public ASTBase {
     ASTVector<ASTFunctionDef> functions;
     ASTVector<ASTTypeDef> types;
 
+    // ASTExprs that correspond to IRStmts that have no direct analogue to any
+    // other part of the AST. The need to create these arises because of the
+    // way bindings are kept during codegen traversal (let -> astexpr ->
+    // irstmt). This is a bit of a hack but we have to keep them somewhere.
+    ASTVector<ASTExpr> ir_exprs;
+
     AST() : gencounter(0) {}
 };
 
@@ -195,18 +201,10 @@ struct ASTStmtWhile : public ASTBase {
 };
 
 struct ASTStmtBreak : public ASTBase {
-    ASTStmtWhile* enclosing_while;  // filled in later, after parse
-
-    ASTStmtBreak() : enclosing_while(nullptr)  {}
-
     ASTRef<ASTIdent> label;  // optional; can't be specified by user.
 };
 
 struct ASTStmtContinue : public ASTBase {
-    ASTStmtWhile* enclosing_while;  // filled in later, after parse
-
-    ASTStmtContinue() : enclosing_while(nullptr)  {}
-
     ASTRef<ASTIdent> label;  // optional; can't be specified by user.
 };
 
@@ -263,6 +261,9 @@ struct ASTExpr : public ASTBase {
         PORTDEF,
 
         STMTBLOCK,  // must end in an ASTStmtExpr
+
+        // NOP at AST level: used only to map to IR stmt values during codegen.
+        NOP,
     };
 
     Op op;

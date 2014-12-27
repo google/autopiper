@@ -1,13 +1,13 @@
-- codegen visitor pass: control flow, phi-node generation
 - support for all IR-supported primitives:
+  - spawn
   - valid_if, kill, killyounger
-  - ports and chans
+  - ports and chans (separate types)
   - timing constraints
-- proper lexical scope and non-hacky function inlining
-- support for aggregates and type lowering pass
 - ask/provide abstraction for bypass (in backend and frontend)
+- support for aggregates and type lowering pass
 - support for "macros" in C++ (as codegen visitor pass hooks)
 - transactional state macros
+- proper lexical scope and non-hacky function inlining
 - conditional/blocking port hooks
 - support for macros in some other language (Lua? Figure out a way to wrap the
   codegen API and the AST-with-pass-annotations nicely)

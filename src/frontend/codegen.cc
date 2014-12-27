@@ -79,6 +79,7 @@ bool CodeGenPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
     IRBB* bb = ctx_->AddBB();
     bb->label = node->name->name;
     bb->is_entry = true;
+    ctx_->AddEntry(bb);
     ctx_->SetCurBB(bb);
 
     return true;
@@ -127,10 +128,16 @@ bool CodeGenPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
 bool CodeGenPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
     unique_ptr<IRStmt> write_stmt(new IRStmt());
     write_stmt->valnum = ctx_->Valnum();
-    write_stmt->type = IRStmtPortWrite;
     const ASTExpr* portdef = FindPortDef(node->port.get(), node->port.get());
     if (!portdef) {
         return false;
+    }
+    if (portdef->inferred_type.is_port) {
+        write_stmt->type = IRStmtPortWrite;
+    } else if (portdef->inferred_type.is_chan) {
+        write_stmt->type = IRStmtChanWrite;
+    } else {
+        Error(node.get(), "Write to something not a port or chan");
     }
     write_stmt->port_name = portdef->ident->name;
     IRStmt* val = ctx_->GetIRStmt(node->rhs.get());
@@ -227,6 +234,12 @@ bool CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 // If the portdef has a user-specified name, it's exported.
                 // Else we come up with a name at this point.
                 if (!node->ident->name.empty()) {
+                    if (node->inferred_type.is_chan) {
+                        Error(node.get(),
+                                "Cannot use a defined name on a chan: "
+                                "chans must be anonymous.");
+                        return false;
+                    }
                     unique_ptr<IRStmt> export_stmt(new IRStmt());
                     export_stmt->valnum = ctx_->Valnum();
                     export_stmt->type = IRStmtPortExport;
@@ -250,8 +263,16 @@ bool CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 }
                 unique_ptr<IRStmt> read_stmt(new IRStmt());
                 read_stmt->valnum = ctx_->Valnum();
-                // TODO: come up with a way to mark ports as chans.
-                read_stmt->type = IRStmtPortRead;
+                if (portdef->inferred_type.is_port) {
+                    read_stmt->type = IRStmtPortRead;
+                } else if (portdef->inferred_type.is_chan) {
+                    read_stmt->type = IRStmtChanRead;
+                } else {
+                    // Typecheck should catch this before we get this far, but
+                    // just to be safe...
+                    Error(node.get(),
+                            "Read from something not a port or chan");
+                }
                 read_stmt->port_name = portdef->ident->name;
                 read_stmt->width = portdef->inferred_type.width;
                 ctx_->AddIRStmt(ctx_->CurBB(), move(read_stmt), node.get());
@@ -740,6 +761,7 @@ bool CodeGenPass::ModifyASTStmtSpawnPre(ASTRef<ASTStmtSpawn>& node) {
     unique_ptr<IRStmt> spawn_stmt(new IRStmt());
     spawn_stmt->valnum = ctx_->Valnum();
     spawn_stmt->type = IRStmtSpawn;
+    spawn_stmt->width = kIRStmtWidthTxnID;
     spawn_stmt->targets.push_back(spawn_bb);
     spawn_stmt->target_names.push_back(spawn_bb->label);
     ctx_->AddIRStmt(ctx_->CurBB(), move(spawn_stmt));

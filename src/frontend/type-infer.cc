@@ -164,7 +164,7 @@ void TypeInferPass::ConveyPort(InferenceNode* port_node, InferenceNode* value_no
     value_node->inputs_.push_back(
         make_pair(
             [](const vector<InferredType>& args) {
-                if (args[0].is_port) {
+                if (args[0].is_port || args[0].is_chan) {
                     InferredType ret = args[0];
                     ret.is_port = false;
                     return ret;
@@ -176,31 +176,15 @@ void TypeInferPass::ConveyPort(InferenceNode* port_node, InferenceNode* value_no
                     return conflict;
                 }
             }, vector<InferenceNode*> { port_node }));
-
-    port_node->inputs_.push_back(
-        make_pair(
-            [](const vector<InferredType>& args) {
-                if (!args[0].is_port) {
-                    InferredType ret = args[0];
-                    ret.is_port = true;
-                    return ret;
-                } else {
-                    InferredType conflict;
-                    conflict.type = InferredType::CONFLICT;
-                    conflict.conflict_msg =
-                        "Port type mismatch";
-                    return conflict;
-                }
-            }, vector<InferenceNode*> { value_node }));
 }
 
 void TypeInferPass::EnsureSimple(InferenceNode* n) {
     Location loc = n->loc;
     n->validators_.push_back(
             [loc](InferredType type, ErrorCollector* coll) {
-                if (type.is_port || type.is_array) {
+                if (type.is_port || type.is_chan || type.is_array) {
                     coll->ReportError(loc, ErrorCollector::ERROR,
-                            "Type cannot be an array or port");
+                            "Type cannot be an array, port, or chan");
                     return false;
                 }
                 return true;

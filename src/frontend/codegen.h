@@ -178,6 +178,7 @@ class CodeGenContext {
         IRBB* CurBB() { return curbb_; }
         void SetCurBB(IRBB* bb) { curbb_ = bb; }
         IRBB* AddBB(const char* label_prefix = nullptr);
+        void AddEntry(IRBB* bb) { prog_->entries.push_back(bb); }
 
         // The current set of variable bindings is maintained as a 'let ->
         // expr' mapping. (Yes, I know, in a Real Functional Language a let

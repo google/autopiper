@@ -139,6 +139,7 @@ struct ASTIdent : public ASTBase {
 struct ASTType : public ASTBase {
     ASTRef<ASTIdent> ident;
     bool is_port;
+    bool is_chan;
     bool is_array;
     int array_length;
 
@@ -146,6 +147,7 @@ struct ASTType : public ASTBase {
 
     ASTType()
         : is_port(false),
+          is_chan(false),
           is_array(false),
           array_length(-1), 
           def(nullptr) {}

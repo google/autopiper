@@ -141,6 +141,7 @@ InferredType AggTypeResolver::ResolveType(const ASTType* type) {
     if (type) {
         ret.is_array = type->is_array;
         ret.is_port = type->is_port;
+        ret.is_chan = type->is_chan;
 
 #define PRIM(prim_name, width_bits)                                 \
         if (type->ident->name == # prim_name ) {                    \

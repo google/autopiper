@@ -41,7 +41,7 @@ struct ASTTypeDef;  // ast.h -- not included here (it includes this file).
 struct InferredType {
     enum Type {
         UNKNOWN,  // not known yet ("top" in the semilattice)
-        // known, with agg (null or not), is_port, is_array determining type
+        // known, with agg, is_port/chan, is_array determining type
         RESOLVED,
         // known, able to expand; when it meets a RESOLVED it becomes RESOLVED.
         EXPANDING_CONST,
@@ -51,6 +51,7 @@ struct InferredType {
     ASTTypeDef* agg;  // for aggregate only
     int width;        // for primitive and aggregate
     bool is_port;
+    bool is_chan;
     bool is_array;
 
     // Error message if conflicted.
@@ -58,7 +59,7 @@ struct InferredType {
 
     InferredType()
         : type(UNKNOWN), agg(nullptr), width(-1),
-          is_port(false), is_array(false) {}
+          is_port(false), is_chan(false), is_array(false) {}
 
     explicit InferredType(int width_)
         : type(RESOLVED), agg(nullptr), width(width_),

@@ -219,6 +219,12 @@ bool Parser::ParseType(ASTType* ty) {
         if (!Expect(Token::IDENT)) {
             return false;
         }
+    } else if (CurToken().s == "chan") {
+        ty->is_chan = true;
+        Consume();
+        if (!Expect(Token::IDENT)) {
+            return false;
+        }
     }
     ty->ident = New<ASTIdent>();
     if (!ParseIdent(ty->ident.get())) {
@@ -700,7 +706,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             return ret;
         }
         
-        if (ident == "port") {
+        if (ident == "port" || ident == "chan") {
             Consume();
             ret->op = ASTExpr::PORTDEF;
             if (TryExpect(Token::QUOTED_STRING)) {

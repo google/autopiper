@@ -160,6 +160,13 @@ bool CreatePorts(IRProgram* program,
                 }
             } else if (IRReadsPort(stmt->type)) {
                 port->uses.push_back(stmt);
+                if (stmt->type == IRStmtPortRead) {
+                    port->type = IRPort::PORT;
+                } else if (stmt->type == IRStmtChanRead) {
+                    port->type = IRPort::CHAN;
+                } else {
+                    assert(false);
+                }
             } else if (stmt->type == IRStmtPortExport) {
                 port->exported = true;
             }

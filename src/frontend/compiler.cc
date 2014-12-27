@@ -96,6 +96,10 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
     backend_options_.input_ir = ir.get();
     backend_options_.filename = "(ir)";
     backend_options_.output = options.output;
+    if (!backend_.CompileFile(backend_options_, collector)) {
+        throw autopiper::Exception(
+                "Compilation failed in backend.");
+    }
 
     return true;
 }

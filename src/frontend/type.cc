@@ -71,7 +71,8 @@ InferredType InferredType::Meet(const InferredType& other) const {
     } else {
         // both in RESOLVED state
         if (this->agg == other.agg && this->width == other.width &&
-            this->is_port == other.is_port && this->is_array == other.is_array) {
+            this->is_port == other.is_port && this->is_chan == other.is_chan &&
+            this->is_array == other.is_array) {
             return *this;
         } else {
             InferredType conflict;
@@ -90,6 +91,10 @@ InferredType InferredType::Meet(const InferredType& other) const {
                 conflict.conflict_msg += strprintf(", is_port: %d vs. %d",
                         this->is_port, other.is_port);
             }
+            if (this->is_chan != other.is_chan) {
+                conflict.conflict_msg += strprintf(", is_chan: %d vs. %d",
+                        this->is_chan, other.is_chan);
+            }
             if (this->is_array != other.is_array) {
                 conflict.conflict_msg += strprintf(", is_array: %d vs. %d",
                     this->is_array, other.is_array);
@@ -104,6 +109,7 @@ bool InferredType::operator==(const InferredType& other) const {
            agg == other.agg &&
            width == other.width &&
            is_port == other.is_port &&
+           is_chan == other.is_chan &&
            is_array == other.is_array &&
            conflict_msg == other.conflict_msg;
 }
@@ -122,6 +128,9 @@ string InferredType::ToString() const {
     os << "Width=" << width;
     if (is_port) {
         os << ",Port";
+    }
+    if (is_chan) {
+        os << ",Chan";
     }
     if (is_array) {
         os << ",Array";

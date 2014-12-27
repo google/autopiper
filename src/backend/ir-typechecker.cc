@@ -69,8 +69,22 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
         if (use->type != expected_read_type) {
             collector->ReportError(use->location, ErrorCollector::ERROR,
                     strprintf("Use %%%d on port '%s' is of wrong type (port/chan)",
-                              use->valnum, port->name.c_str(),
-                              use->type, expected_read_type));
+                              use->valnum, port->name.c_str()));
+            return false;
+        }
+    }
+    // Check that the writer (def), if any, also is of the correct type.
+    if (port->def) {
+        IRStmtType expected_write_type = IRStmtChanWrite;
+        switch (port->type) {
+            case IRPort::CHAN: expected_write_type = IRStmtChanWrite; break;
+            case IRPort::PORT: expected_write_type = IRStmtPortWrite; break;
+            default: assert(false); break;
+        }
+        if (port->def->type != expected_write_type) {
+            collector->ReportError(port->def->location, ErrorCollector::ERROR,
+                    strprintf("Def %%%d on port '%s' is of wrong type (port/chan)",
+                        port->def->valnum, port->name.c_str()));
             return false;
         }
     }
@@ -197,8 +211,8 @@ bool CheckStmtWidthMatchesArgs(IRStmt* stmt, ErrorCollector* collector) {
         if (arg->width != stmt->width) {
             collector->ReportError(stmt->location, ErrorCollector::ERROR,
                     strprintf("Width of %d on argument %%%d does not match "
-                              "width %d of this statement",
-                              arg->width, arg->valnum, stmt->width));
+                              "width %d of this statement (%%%d)",
+                              arg->width, arg->valnum, stmt->width, stmt->valnum));
             return false;
         }
     }
@@ -208,7 +222,8 @@ bool CheckStmtWidthMatchesArgs(IRStmt* stmt, ErrorCollector* collector) {
 bool CheckExactWidth(IRStmt* stmt, int width, ErrorCollector* collector) {
     if (stmt->width != width) {
         collector->ReportError(stmt->location, ErrorCollector::ERROR,
-                strprintf("Statement must have width of %d",
+                strprintf("Statement %%%d must have width of %d",
+                    stmt->valnum,
                     width));
         return false;
     }

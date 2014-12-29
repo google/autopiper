@@ -44,6 +44,7 @@ struct IRProgram {
     IRProgram() {
         next_valnum = 1;
         next_anon_timevar = 1;
+        crosslinked_args_bbs = false;
     }
 
     std::vector<std::unique_ptr<IRBB>> bbs;
@@ -56,6 +57,7 @@ struct IRProgram {
 
     int next_valnum;
     int next_anon_timevar;
+    bool crosslinked_args_bbs;
 
     static std::unique_ptr<IRProgram> Parse(const std::string& filename,
                                             std::istream* in,
@@ -81,6 +83,7 @@ struct IRBB {
         pipe = NULL;
         is_entry = false;
         is_restart = false;
+        restart_cond = NULL;
         in_valid = NULL;
         restart_pred_src = NULL;
     }
@@ -283,6 +286,7 @@ struct IRPort {
 
     IRStmt* def;
     std::vector<IRStmt*> uses;
+    std::vector<IRStmt*> exports;
 };
 
 struct IRTimeVar {

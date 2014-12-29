@@ -81,6 +81,7 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
         throw autopiper::Exception(
                 "Compilation failed in IR code generation.");
     }
+    codegen_pass.RemoveUnreachableBBsAndPhis();
 
     unique_ptr<IRProgram> ir = codegen_ctx.Release();
 

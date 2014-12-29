@@ -112,6 +112,13 @@ bool CheckChanUses(IRProgram* program,
         for (auto& bb : pipe->bbs) {
             for (auto& stmt : bb->stmts) {
                 if (stmt->type == IRStmtChanRead &&
+                    !stmt->port->def) {
+                    coll->ReportError(stmt->location, ErrorCollector::ERROR,
+                            strprintf("Statement %%%d uses chan '%s' with no writer",
+                                stmt->valnum, stmt->port->name.c_str()));
+                    return false;
+                }
+                if (stmt->type == IRStmtChanRead &&
                     stmt->port->def->bb->pipe->sys != sys) {
                     coll->ReportError(stmt->location, ErrorCollector::ERROR,
                             strprintf("Statement %%%d uses chan '%s' outside of its "
@@ -456,6 +463,16 @@ IRStmt* BuildMuxTree(IRBBBuilder* builder,
     return inputs[0].second;
 }
 
+IRStmt* FindReplacement(
+        map<const IRStmt*, IRStmt*>& replacements,
+        IRStmt* s) {
+    auto i = replacements.find(s);
+    if (i == replacements.end()) {
+        return s;
+    }
+    return FindReplacement(replacements, i->second);
+}
+
 // Perform if-conversion on statements, and place them in the statement list.
 bool IfConvert(IRProgram* program,
                PipeSys* sys,
@@ -627,25 +644,27 @@ bool IfConvert(IRProgram* program,
             replacements[stmt.get()] = BuildMuxTree(builder.get(), stmt.get(),
                                                     &memo);
         }
-        builder->PrependToBB(
-            // removal predicate: remove phis.
-            [] (IRStmt* stmt) { return stmt->type == IRStmtPhi; }
-        );
+        builder->PrependToBB();
     }
     // Rewrite args using replaced IRStmts.
     for (auto& bb : pipe->bbs) {
         for (auto& stmt : bb->stmts) {
-            for (auto i = stmt->args.begin(), e = stmt->args.end();
-                 i != e; ++i) {
-                auto ri = replacements.find(*i);
-                if (ri != replacements.end()) {
-                    *i = ri->second;
-                }
-            }
             for (unsigned i = 0; i < stmt->args.size(); i++) {
+                stmt->args[i] = FindReplacement(replacements, stmt->args[i]);
                 stmt->arg_nums[i] = stmt->args[i]->valnum;
             }
         }
+    }
+
+    // Remove phi nodes.
+    for (auto* bb : pipe->bbs) {
+        vector<unique_ptr<IRStmt>> stmts;
+        for (auto& stmt : bb->stmts) {
+            if (stmt->type == IRStmtPhi) continue;
+            stmts.push_back(move(stmt));
+        }
+        bb->stmts.swap(stmts);
+        stmts.clear();
     }
 
     return true;
@@ -728,8 +747,8 @@ bool FlattenPipe(IRProgram* program,
                  PipeSys* sys,
                  Pipe* pipe,
                  ErrorCollector* coll) {
-    // Remove all terminators from BBs, and flatten stmts into one list for the
-    // pipe.
+    // Remove all terminators and phi-nodes from BBs, and flatten stmts into
+    // one list for the pipe.
     BBReversePostorder rpo;
     rpo.Compute(pipe->roots);
     for (auto* bb : pipe->bbs) {
@@ -1017,6 +1036,7 @@ bool AssignStalls(IRProgram* program,
         stallgen_bb->label = strprintf("__stallgen_stage_%d", i);
         IRBBBuilder builder(program, stallgen_bb.get());
         stage->stall = builder.BuildTree(IRStmtOpOr, later_backedge_valids);
+        builder.PrependToBB();
         
         // Find the prior stage in which to insert the OR-tree, and put it
         // there.

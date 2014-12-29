@@ -73,10 +73,9 @@ class IRBBBuilder {
 
   // Prepend accumulated ops to the BB's stmt list. User should batch additions
   // and do this only once, since it needs to copy the stmt list.
-  void PrependToBB(std::function<bool(IRStmt*)> remove_pred = DefaultPred) {
+  void PrependToBB() {
       for (auto& s : bb_->stmts) {
-          if (!remove_pred(s.get()))
-              stmts_.push_back(std::move(s));
+          stmts_.push_back(std::move(s));
       }
       std::swap(bb_->stmts, stmts_);
       stmts_.clear();
@@ -92,8 +91,6 @@ class IRBBBuilder {
   IRBB* bb_;
   // statements to append at flush.
   std::vector<std::unique_ptr<IRStmt>> stmts_;
-
-  static bool DefaultPred(IRStmt*) { return true; }
 };
 
 }  // namespace autopiper

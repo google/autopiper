@@ -260,6 +260,9 @@ class Lexer {
 
         void SetIgnoreNewline(bool ignore_newline) {
             ignore_newline_ = ignore_newline;
+            if (Have() && Peek().type == Token::NEWLINE) {
+                ReadNext();
+            }
         }
 
         Token Peek() const {

@@ -1,12 +1,13 @@
-- support for all IR-supported primitives:
-  - spawn
-  - valid_if, kill, killyounger
-  - ports and chans (separate types)
+- support for all IR-supported primitives at language level:
+  - kill
+  - killyounger
+  - valid_if
   - timing constraints
 - ask/provide abstraction for bypass (in backend and frontend)
 - support for aggregates and type lowering pass
 - support for "macros" in C++ (as codegen visitor pass hooks)
-- transactional state macros
+- transactional state macros (or primitives?)
+- superscalar primitive? (alters the pipelining transform)
 - proper lexical scope and non-hacky function inlining
 - conditional/blocking port hooks
 - support for macros in some other language (Lua? Figure out a way to wrap the

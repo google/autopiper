@@ -46,7 +46,7 @@ class FuncInlinePass : public ASTVisitorContext {
         static bool NeedsVisit() { return true; }
 
         // Visit pass -- make note of all function defs.
-        virtual bool VisitASTFunctionDefPre(
+        virtual Result VisitASTFunctionDefPre(
                 const ASTFunctionDef* node);
 
         // To do the modification, we have a post-pass on ASTExpr
@@ -54,12 +54,12 @@ class FuncInlinePass : public ASTVisitorContext {
         // body is a modified version of the called function's body, using a
         // while-loop pattern with break statements and assignments to a
         // temporary return value variable to desugar 'return' statements.
-        virtual bool ModifyASTExprPost(ASTRef<ASTExpr>& node);
+        virtual Result ModifyASTExprPost(ASTRef<ASTExpr>& node);
 
         // Grab a pointer to the AST so we can gensym new temps.
-        virtual bool ModifyASTPre(ASTRef<AST>& node) {
+        virtual Result ModifyASTPre(ASTRef<AST>& node) {
             ast_ = node.get();
-            return true;
+            return VISIT_CONTINUE;
         }
     private:
         // map from function names to ASTFunctionDefs.

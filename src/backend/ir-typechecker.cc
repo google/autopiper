@@ -23,6 +23,7 @@
 #include <vector>
 #include <string>
 #include <set>
+#include <functional>
 
 using namespace std;
 using namespace autopiper;
@@ -41,6 +42,10 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
     // same width).
     if (width == -1 && port->uses.size() > 0) {
         width = port->uses[0]->width;
+    }
+    // If no reads or writes, pick a width from the first export.
+    if (width == -1 && port->exports.size() > 0) {
+        width = port->exports[0]->width;
     }
 
     port->width = width;
@@ -266,6 +271,7 @@ bool CheckStmtWidth(IRStmt* stmt, ErrorCollector* collector) {
                     if (!CheckExactWidth(stmt,
                                 stmt->args[0]->width,
                                 collector)) return false;
+                    break;
                 case IRStmtOpMul:
                     if (!CheckExactWidth(stmt,
                                 stmt->args[0]->width +
@@ -426,6 +432,21 @@ bool CheckBB(IRBB* bb, ErrorCollector* collector) {
     return true;
 }
 
+template<typename T, typename I>
+string JoinSet(I begin, I end, function<string(T)> f, const char* joiner) {
+    string ret;
+    bool first = true;
+    for (I it = begin; it != end; ++it) {
+        if (first) {
+            first = false;
+        } else {
+            ret += joiner;
+        }
+        ret += f(*it);
+    }
+    return ret;
+}
+
 // Validates that phi-node sources are from immediately preceding BBs, and
 // that each phi node has an in-edge from every BB that precedes it.
 // Also validates that every value use is dominated by its def.
@@ -453,8 +474,29 @@ bool CheckPhis(IRProgram* program, ErrorCollector* collector) {
                 collector->ReportError(
                     stmt->location,
                     ErrorCollector::ERROR,
-                    "Phi-node has wrong number of arguments: must have "
-                    "one bb, %value pair for every predecessor BB.");
+                    strprintf(
+                        "Phi-node %%%d has wrong number of arguments (%d): "
+                        "must have one bb, %value pair for every predecessor BB.",
+                        stmt->valnum, stmt->args.size()));
+                string pred_str = JoinSet<IRBB*>(
+                        expected_inputs.begin(),
+                        expected_inputs.end(),
+                        [](IRBB* bb) { return bb->label; }, ", ");
+                collector->ReportError(
+                    stmt->location,
+                    ErrorCollector::ERROR,
+                    strprintf(
+                        "Predecessor blocks: %s", pred_str.c_str()));
+                string arg_str = JoinSet<IRStmt*>(
+                        stmt->args.begin(), stmt->args.end(),
+                        [](IRStmt* arg) {
+                            return strprintf("%%%d", arg->valnum); },
+                        ", ");
+                collector->ReportError(
+                    stmt->location,
+                    ErrorCollector::ERROR,
+                    strprintf(
+                        "Args: %s", arg_str.c_str()));
                 return false;
             }
 
@@ -478,9 +520,10 @@ bool CheckPhis(IRProgram* program, ErrorCollector* collector) {
                     collector->ReportError(
                         stmt->location,
                         ErrorCollector::ERROR,
-                        strprintf("Defining block '%s' of phi-node input "
+                        strprintf("Defining block '%s' of phi-node %%%d input "
                                   "%%%d does not dominate in-edge predecessor '%s'",
                                   input_value->bb->label.c_str(),
+                                  stmt->valnum,
                                   input_value->valnum,
                                   input_block->label.c_str()));
                     return false;

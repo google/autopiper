@@ -27,6 +27,14 @@ using namespace autopiper;
 
 namespace {
 
+void SetBBBackpointers(IRProgram* program) {
+    for (auto& bb : program->bbs) {
+        for (auto& stmt : bb->stmts) {
+            stmt->bb = bb.get();
+        }
+    }
+}
+
 typedef map<string, IRBB*> BBMap;
 
 bool GetBBMap(IRProgram* program,
@@ -169,6 +177,7 @@ bool CreatePorts(IRProgram* program,
                 }
             } else if (stmt->type == IRStmtPortExport) {
                 port->exported = true;
+                port->exports.push_back(stmt);
             }
         }
         program->ports.push_back(move(port));
@@ -201,11 +210,15 @@ bool CreateStorage(IRProgram* program,
 }  // anonymous namespace
 
 bool IRProgram::Crosslink(ErrorCollector* collector) {
-    BBMap bbmap;
-    ValnumMap valnummap;
-    if (!GetBBMap(this, &bbmap, collector)) return false;
-    if (!GetValnumMap(this, &valnummap, collector)) return false;
-    if (!LinkStmts(this, bbmap, valnummap, collector)) return false;
+    SetBBBackpointers(this);
+    if (!crosslinked_args_bbs) {
+        BBMap bbmap;
+        ValnumMap valnummap;
+        if (!GetBBMap(this, &bbmap, collector)) return false;
+        if (!GetValnumMap(this, &valnummap, collector)) return false;
+        if (!LinkStmts(this, bbmap, valnummap, collector)) return false;
+        crosslinked_args_bbs = true;
+    }
 
     PortMap portmap;
     if (!GetPortMap(this, &portmap, collector)) return false;

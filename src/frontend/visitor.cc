@@ -26,9 +26,13 @@ namespace frontend {
 #define VISIT(type, visit_code)                                     \
     bool ASTVisitor::Visit ## type(const type* node,                \
             ASTVisitorContext* context) const {                     \
-        if (!context->Visit ## type ## Pre(node)) return false;     \
-        visit_code                                                  \
-        if (!context->Visit ## type ## Post(node)) return false;    \
+        auto res = context->Visit ## type ## Pre(node);             \
+        if (res == ASTVisitorContext::VISIT_END) return false;      \
+        if (res == ASTVisitorContext::VISIT_CONTINUE) {             \
+            visit_code                                              \
+        }                                                           \
+        res = context->Visit ## type ## Post(node);                 \
+        if (res == ASTVisitorContext::VISIT_END) return false;      \
         return true;                                                \
     }
 
@@ -192,11 +196,15 @@ VISIT(ASTTypeField, {
 #define MODIFY(type, code_block)                                           \
     bool ASTVisitor::Modify ## type(ASTRef<type>& node,                    \
         ASTVisitorContext* context) const {                                \
-        if (!context->Modify ## type ## Pre (node)) {                      \
+        auto res = context->Modify ## type ## Pre (node);                  \
+        if (res == ASTVisitorContext::VISIT_END) {                         \
             return false;                                                  \
         }                                                                  \
-        code_block                                                         \
-        if (!context->Modify ## type ## Post(node)) {                      \
+        if (res == ASTVisitorContext::VISIT_CONTINUE) {                    \
+            code_block                                                     \
+        }                                                                  \
+        res = context->Modify ## type ## Post(node);                       \
+        if (res == ASTVisitorContext::VISIT_END) {                         \
             return false;                                                  \
         }                                                                  \
         return true;                                                       \
@@ -342,7 +350,7 @@ MODIFY(ASTStmtExpr, {
 })
 
 MODIFY(ASTExpr, {
-    for (int i = 0; i < node->ops.size(); i++) {
+    for (unsigned i = 0; i < node->ops.size(); i++) {
         FIELD(node->ops[i], ASTExpr);
     }
     if (node->ident) {

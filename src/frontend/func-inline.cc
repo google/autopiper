@@ -27,9 +27,10 @@ FuncInlinePass::FuncInlinePass(autopiper::ErrorCollector* coll)
     : ASTVisitorContext(coll)
 { }
 
-bool FuncInlinePass::VisitASTFunctionDefPre(const ASTFunctionDef* node) {
+FuncInlinePass::Result
+FuncInlinePass::VisitASTFunctionDefPre(const ASTFunctionDef* node) {
     function_defs_.insert(make_pair(node->name->name, node));
-    return true;
+    return VISIT_CONTINUE;
 }
 
 namespace {
@@ -44,7 +45,7 @@ class ArgsReturnReplacer : public ASTVisitorContext {
               return_var_(return_var), while_label_(while_label)
         {}
 
-        virtual bool ModifyASTStmtPost(ASTRef<ASTStmt>& node) {
+        virtual Result ModifyASTStmtPost(ASTRef<ASTStmt>& node) {
             if (node->return_) {
                 // Replace a "return <expr>" statement with this:
                 // {
@@ -71,7 +72,7 @@ class ArgsReturnReplacer : public ASTVisitorContext {
                 block_box->block = move(block);
                 node = move(block_box);
             }
-            return true;
+            return VISIT_CONTINUE;
         }
 
         void AddArgLets(ASTStmtBlock* parent) {
@@ -112,7 +113,7 @@ bool InlineFunctionBody(
 
     // Create a 'while' stmt wrapping the function body.
     ASTRef<ASTStmtWhile> while_stmt(new ASTStmtWhile());
-    while_stmt->label = ASTGenSym(ast);
+    while_stmt->label = ASTGenSym(ast, "func_body");
     while_stmt->condition.reset(new ASTExpr(1));
     while_stmt->condition->op = ASTExpr::CONST;
     while_stmt->condition->constant = 1;
@@ -155,14 +156,15 @@ bool InlineFunctionBody(
 }
 }  // anonymous namespace
 
-bool FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
+FuncInlinePass::Result
+FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
     if (node->op == ASTExpr::FUNCCALL) {
         // Look up the function.
         const string& name = node->ident->name;
         auto func = function_defs_[name];
         if (!func) {
             Error(node.get(), strprintf("Unknown function '%s'", name.c_str()));
-            return false;
+            return VISIT_END;
         }
 
         // Create a block that will become part of an expression block.
@@ -170,7 +172,8 @@ bool FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
         // Create a temporary for the return value.
         ASTRef<ASTExpr> initial_value(new ASTExpr(0));
         auto return_ident_and_expr =
-            ASTDefineTemp(ast_, block.get(), move(initial_value),
+            ASTDefineTemp(ast_, "return_value_",
+                          block.get(), move(initial_value),
                           CloneAST(func->return_type.get()));
         auto return_ident = return_ident_and_expr.first;
         auto return_expr = move(return_ident_and_expr.second);
@@ -179,7 +182,7 @@ bool FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
         if (!InlineFunctionBody(
                     ast_, func, node.get(), block.get(),
                     return_ident, move(node->ops), Errors())) {
-            return false;
+            return VISIT_END;
         }
 
         // Add a final expression statement with the value of the return-value
@@ -194,7 +197,7 @@ bool FuncInlinePass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
         node->op = ASTExpr::STMTBLOCK;
         node->stmt = move(block);
     }
-    return true;
+    return VISIT_CONTINUE;
 }
 
 }  // namesapce frontend

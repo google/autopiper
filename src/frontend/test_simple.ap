@@ -17,15 +17,16 @@ func entry main() : void {
     let anon_port : port int32 = port;
 
     spawn while (1) {
-        let local_in : chan int32 = chan;
-        let local_out : chan int32 = chan;
-        let x = read local_in;
-        write local_out, x;
+        let local_chan : chan int32 = chan;
+        let x : int32 = 42;
+        write local_chan, x;
+        x = read local_chan;
     }
 
-    let val1 = my_func(read global_in, read global_in);
     let int32_val = read global_in;
     let val2 = my_func(int32_val, plus1(int32_val));
+
+    let val1 = my_func(read global_in, read global_in);
 
     let x = read global_in;
     let y = x;

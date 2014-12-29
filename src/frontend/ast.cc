@@ -517,21 +517,22 @@ AST_CLONE(ASTTypeField) {
 #undef SUB
 #undef AST_CLONE
 
-ASTRef<ASTIdent> ASTGenSym(AST* ast) {
+ASTRef<ASTIdent> ASTGenSym(AST* ast, const char* prefix) {
     ASTRef<ASTIdent> ret(new ASTIdent());
-    ret->name = strprintf("__gensym_%d", ast->gencounter++);
+    ret->name = strprintf("%s_%d", prefix, ast->gencounter++);
     return ret;
 }
 
 pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
     AST* ast,
+    const char* prefix,
     ASTStmtBlock* parent,
     ASTRef<ASTExpr> initial_value,
     ASTRef<ASTType> type) {
 
     ASTRef<ASTStmtLet> let_stmt(new ASTStmtLet());
     let_stmt->lhs.reset(new ASTIdent());
-    let_stmt->lhs = ASTGenSym(ast);
+    let_stmt->lhs = ASTGenSym(ast, prefix);
     let_stmt->rhs = move(initial_value);
     let_stmt->type = move(type);
     ASTRef<ASTStmt> stmt_box(new ASTStmt());

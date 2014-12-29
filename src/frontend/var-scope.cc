@@ -26,7 +26,8 @@ using namespace std;
 namespace autopiper {
 namespace frontend {
 
-bool ArgLetPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
+ArgLetPass::Result
+ArgLetPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
     ASTVector<ASTStmt> stmts;
     int idx = 0;
     for (auto& param : node->params) {
@@ -45,41 +46,45 @@ bool ArgLetPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
     node->block->stmts.swap(stmts);
     stmts.clear();
 
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool VarScopePass::ModifyASTStmtBlockPre(ASTRef<ASTStmtBlock>& node) {
+VarScopePass::Result
+VarScopePass::ModifyASTStmtBlockPre(ASTRef<ASTStmtBlock>& node) {
     OpenScope();
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool VarScopePass::ModifyASTStmtBlockPost(ASTRef<ASTStmtBlock>& node) {
+VarScopePass::Result
+VarScopePass::ModifyASTStmtBlockPost(ASTRef<ASTStmtBlock>& node) {
     CloseScope();
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool VarScopePass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
+VarScopePass::Result
+VarScopePass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
     const std::string& name = node->lhs->name;
     if (!AddDef(name, node.get())) {
         Error(node.get(), strprintf(
                     "Multiple definition for binding '%s'",
                     name.c_str()));
-        return false;
+        return VISIT_END;
     }
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool VarScopePass::ModifyASTExprPre(ASTRef<ASTExpr>& node) {
+VarScopePass::Result
+VarScopePass::ModifyASTExprPre(ASTRef<ASTExpr>& node) {
     if (node->op == ASTExpr::VAR) {
         const std::string& name = node->ident->name;
         node->def = GetDef(name);
         if (!node->def) {
             Error(node.get(), strprintf(
                         "Unknown binding '%s'", name.c_str()));
-            return false;
+            return VISIT_END;
         }
     }
-    return true;
+    return VISIT_CONTINUE;
 }
 
 bool VarScopePass::AddDef(const std::string& name, ASTStmtLet* def) {

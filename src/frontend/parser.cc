@@ -309,6 +309,9 @@ bool Parser::ParseStmtAssignOrExpr(ASTStmt* parent) {
     // Parse one expression: this may be the LHS of an assignment or may be a
     // bare expression statement.
     ASTRef<ASTExpr> lhs = ParseExpr();
+    if (!lhs) {
+        return false;
+    }
 
     if (TryConsume(Token::SEMICOLON)) {
         // An expression statement.
@@ -453,6 +456,10 @@ template<
     typename ...Args>
 ASTRef<ASTExpr> Parser::ParseLeftAssocBinops(Args&&... args) {
   ASTRef<ASTExpr> ret = (this->*next_level)();
+  if (!ret) {
+      Error("Parse failed.");
+      return nullptr;
+  }
   ASTRef<ASTExpr> op_node = New<ASTExpr>();
   op_node->ops.push_back(move(ret));
   if (ParseLeftAssocBinopsRHS<this_level, next_level>(

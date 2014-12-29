@@ -117,13 +117,27 @@ class ASTVisitorContext {
         // allowed to modify the referred-to node in place or replace it. If it
         // replaces the node, it may steal the original node (e.g. to use as
         // part of a subtree of the new node) or simply allow the unique_ptr to
-        // delete it. The method returns a bool; if it returns false, traversal
-        // stops immediately.
+        // delete it.
+        //
+        // Each method may return VISIT_CONTINUE (continue to recurse),
+        // VISIT_TERMINAL (continue the visit, but do not recurse into children
+        // if this is a pre-hook), or VISIT_END (end the entire traversal).
+        
+        enum Result {
+            VISIT_CONTINUE,
+            VISIT_TERMINAL,
+            VISIT_END,
+        };
+
 #define METHODS(type)                                                          \
-        virtual bool Visit ## type ## Pre(const type* node) { return true; }   \
-        virtual bool Visit ## type ## Post(const type* node) { return true; }  \
-        virtual bool Modify ## type ## Pre(ASTRef<type>& node) { return true; }\
-        virtual bool Modify ## type ## Post(ASTRef<type>& node) { return true; }
+        virtual Result Visit ## type ## Pre(const type* node)                  \
+            { return VISIT_CONTINUE; }                                         \
+        virtual Result Visit ## type ## Post(const type* node)                 \
+            { return VISIT_CONTINUE; }                                         \
+        virtual Result Modify ## type ## Pre(ASTRef<type>& node)               \
+            { return VISIT_CONTINUE; }                                         \
+        virtual Result Modify ## type ## Post(ASTRef<type>& node)              \
+            { return VISIT_CONTINUE; }                                         \
 
         METHODS(AST)
         METHODS(ASTFunctionDef)

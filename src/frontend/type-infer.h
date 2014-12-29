@@ -91,17 +91,17 @@ class TypeInferPass : public ASTVisitorContext {
         // references to the types! These references are later used to update
         // all types during Infer() after the types are inferred at all nodes.
 
-        virtual bool ModifyASTPre(ASTRef<AST>& node);
-        virtual bool ModifyASTExprPost(ASTRef<ASTExpr>& node);
-        virtual bool ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node);
-        virtual bool ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node);
-        virtual bool ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node);
-        virtual bool ModifyASTStmtIfPost(ASTRef<ASTStmtIf>& node);
-        virtual bool ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node);
+        virtual Result ModifyASTPre(ASTRef<AST>& node);
+        virtual Result ModifyASTExprPost(ASTRef<ASTExpr>& node);
+        virtual Result ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node);
+        virtual Result ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node);
+        virtual Result ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node);
+        virtual Result ModifyASTStmtIfPost(ASTRef<ASTStmtIf>& node);
+        virtual Result ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node);
 
         // Post-AST handler actually runs the type inference.
-        virtual bool ModifyASTPost(ASTRef<AST>& node) {
-            return Infer(Errors());
+        virtual Result ModifyASTPost(ASTRef<AST>& node) {
+            return Infer(Errors()) ? VISIT_CONTINUE : VISIT_END;
         }
 
     private:

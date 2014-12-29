@@ -323,13 +323,14 @@ AST_METHODS(ASTTypeField);
 // ----------------- Utility functions. ----------------------
 
 // Generate a new ASTIdent with a unique name (based on gencounter).
-ASTRef<ASTIdent> ASTGenSym(AST* ast);
+ASTRef<ASTIdent> ASTGenSym(AST* ast, const char* prefix);
 
 // Define a new temp in block |parent|, with given |initial_value|, returning
 // both a pointer to its identifier and an owning pointer to an expression that
 // may be cloned to use it.
 std::pair<const ASTIdent*, ASTRef<ASTExpr>> ASTDefineTemp(
         AST* ast,
+        const char* prefix,
         ASTStmtBlock* parent,
         ASTRef<ASTExpr> initial_value,
         ASTRef<ASTType> type);

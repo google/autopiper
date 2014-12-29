@@ -43,16 +43,14 @@ class CodeGenScope {
 
         V& operator[](const K& k) {
             for (int i = scopes_.size() - 1; i >= 0; --i) {
-                auto m = scopes_[i].bindings;
+                auto& m = scopes_[i].bindings;
                 auto it = m.find(k);
                 if (it != m.end()) {
                     return it->second;
                 }
             }
-            // If not found, create a new binding implicitly in the
-            // deepest-nested scopes.
-            assert(!scopes_.empty());
-            return scopes_.back().bindings[k];
+            // If not found, error -- new bindings must be created with Set().
+            assert(false);
         }
 
         void Set(const K& k, V v) {
@@ -70,17 +68,16 @@ class CodeGenScope {
             return false;
         }
 
-        void Push() {
+        int Push() {
+            int level = scopes_.size();
             scopes_.push_back({});
+            return level;
         }
 
-        void Pop() {
-            scopes_.pop_back();
-            assert(!scopes_.empty());
-        }
-
-        int Level() const {
-            return scopes_.size();
+        void PopTo(int level) {
+            while (scopes_.size() > level) {
+                scopes_.pop_back();
+            }
         }
 
         std::map<K, V> Overlay(int from_level) const {
@@ -101,12 +98,6 @@ class CodeGenScope {
                 }
             }
             return ret;
-        }
-
-        std::map<K, V> ReleasePop() {
-            auto bindings = std::move(scopes_.back().bindings);
-            Pop();
-            return bindings;
         }
 
         // Takes a set of inner-scope overlays (overwritten bindings) over a
@@ -166,10 +157,11 @@ class CodeGenContext {
         CodeGenContext(AST* ast);
 
         AST* ast() { return ast_; }
+        IRProgram* ir() { return prog_.get(); }
         std::unique_ptr<IRProgram> Release() { return std::move(prog_); }
 
         // Generate a new temporary symbol.
-        std::string GenSym();
+        std::string GenSym(const char* prefix = nullptr);
         // Return a new valnum for IR.
         int Valnum() { return gensym_++; }
 
@@ -236,45 +228,49 @@ class CodeGenPass : public ASTVisitorContext {
         CodeGenPass(ErrorCollector* coll, CodeGenContext* ctx)
             : ASTVisitorContext(coll), ctx_(ctx) {}
 
+        // Call this after the codegen pass actually runs to clean up the
+        // output.
+        void RemoveUnreachableBBsAndPhis();
+
     protected:
         // pre-hook on function: determine whether we'll do codegen or not, and
         // remove the function body if not.
-        virtual bool ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node);
+        virtual Result ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node);
 
         // post-hook on function: end with a 'kill'.
-        virtual bool ModifyASTFunctionDefPost(ASTRef<ASTFunctionDef>& node);
+        virtual Result ModifyASTFunctionDefPost(ASTRef<ASTFunctionDef>& node);
 
         // straight-line-code statement codegen hooks. We do codegen after
         // sub-stmts because exprs in the stmt must be gen'd first.
-        virtual bool ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node);
-        virtual bool ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node);
-        virtual bool ModifyASTStmtBreakPost(ASTRef<ASTStmtBreak>& node);
-        virtual bool ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node);
-        virtual bool ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node);
-        virtual bool ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node);
+        virtual Result ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node);
+        virtual Result ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node);
+        virtual Result ModifyASTStmtBreakPost(ASTRef<ASTStmtBreak>& node);
+        virtual Result ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node);
+        virtual Result ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node);
+        virtual Result ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node);
 
         // Expr codegen. Post-hook so that ops are already materialized.
-        virtual bool ModifyASTExprPost(ASTRef<ASTExpr>& node);
+        virtual Result ModifyASTExprPost(ASTRef<ASTExpr>& node);
 
         // 'if' codegen hook. This explicitly calls our visit functions on if-
         // and else-bodies after setting up the BBs appropriately, then removes
         // the bodies so the ordinary visit driver doesn't traverse into the
         // subtrees again.
-        virtual bool ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node);
+        virtual Result ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node);
 
         // 'while' codegen hook. This also explicitly calls our visit functions
         // and then removes the subtree, for the same reasons as given above
         // for the 'if' hook.
-        virtual bool ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node);
+        virtual Result ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node);
 
-        virtual bool ModifyASTStmtSpawnPre(ASTRef<ASTStmtSpawn>& node);
+        virtual Result ModifyASTStmtSpawnPre(ASTRef<ASTStmtSpawn>& node);
 
-        virtual bool ModifyASTStmtReturnPre(ASTRef<ASTStmtReturn>& node) {
+        virtual Result ModifyASTStmtReturnPre(ASTRef<ASTStmtReturn>& node) {
             // Should have been removed by func-inlining pass.
             Error(node.get(),
                   "Return statement present at codegen: likely because "
                   "a return was attempted from an entry func.");
-            return false;
+            return VISIT_END;
         }
 
     private:
@@ -297,7 +293,8 @@ class CodeGenPass : public ASTVisitorContext {
         LoopFrame* FindLoopFrame(const ASTBase* node, const ASTIdent* label);
         bool AddWhileLoopPhiNodeInputs(
                 const ASTBase* node, CodeGenContext* ctx,
-                std::map<ASTStmtLet*, IRStmt*>& binding_phis,
+                std::map<ASTStmtLet*, IRStmt*>* binding_phis,
+                IRBB* binding_phi_bb,
                 std::map<IRBB*, SubBindingMap>& in_edges);
         void HandleBreakContinue(LoopFrame* frame,
                 std::map<IRBB*, SubBindingMap>& edge_map,

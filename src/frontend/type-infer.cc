@@ -167,6 +167,7 @@ void TypeInferPass::ConveyPort(InferenceNode* port_node, InferenceNode* value_no
                 if (args[0].is_port || args[0].is_chan) {
                     InferredType ret = args[0];
                     ret.is_port = false;
+                    ret.is_chan = false;
                     return ret;
                 } else {
                     InferredType conflict;
@@ -191,9 +192,10 @@ void TypeInferPass::EnsureSimple(InferenceNode* n) {
             });
 }
 
-bool TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
+TypeInferPass::Result
+TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
     aggs_.reset(new AggTypeResolver(node.get()));
-    return aggs_->Compute(Errors());
+    return aggs_->Compute(Errors()) ? VISIT_CONTINUE : VISIT_END;
 }
 
 static int BignumLog2(ASTBignum num) {
@@ -205,7 +207,8 @@ static int BignumLog2(ASTBignum num) {
     return bits;
 }
 
-bool TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
+TypeInferPass::Result
+TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
     // Always create an inference node for an ASTExpr.
     InferenceNode* n = NodeForAST(node.get());
     n->nodes_.push_back(&node->inferred_type);
@@ -273,7 +276,7 @@ bool TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 node->ops[2]->op != ASTExpr::CONST) {
                 Error(node.get(),
                         "Index operands to bitslice expr must be constants");
-                return false;
+                return VISIT_END;
             }
 
             ASTBignum diff = node->ops[1]->constant - node->ops[2]->constant;
@@ -345,10 +348,11 @@ bool TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
             break;
     }
 
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool TypeInferPass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
     InferenceNode* n = NodeForAST(node.get());
     if (node->type) {
         InferredType t = aggs_->ResolveType(node->type.get());
@@ -357,34 +361,38 @@ bool TypeInferPass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
     InferenceNode* rhs_node = NodeForAST(node->rhs.get());
     ConveyType(n, rhs_node);
     ConveyType(rhs_node, n);
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool TypeInferPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
     InferenceNode* lhs = NodeForAST(node->lhs.get());
     InferenceNode* rhs = NodeForAST(node->rhs.get());
     ConveyType(lhs, rhs);
     ConveyType(rhs, lhs);
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool TypeInferPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
     InferenceNode* port = NodeForAST(node->port.get());
     InferenceNode* rhs = NodeForAST(node->rhs.get());
     ConveyPort(port, rhs);
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool TypeInferPass::ModifyASTStmtIfPost(ASTRef<ASTStmtIf>& node) {
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtIfPost(ASTRef<ASTStmtIf>& node) {
     InferenceNode* condition = NodeForAST(node->condition.get());
     ConveyConstType(condition, InferredType(1));
-    return true;
+    return VISIT_CONTINUE;
 }
 
-bool TypeInferPass::ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node) {
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node) {
     InferenceNode* condition = NodeForAST(node->condition.get());
     ConveyConstType(condition, InferredType(1));
-    return true;
+    return VISIT_CONTINUE;
 }
 
 static void AddNodeAndDeps(const InferenceNode* node,

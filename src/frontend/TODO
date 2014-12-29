@@ -1,6 +1,10 @@
-- ask/provide abstraction for bypass (in backend and frontend)
+- support for storage (load/store ops)
+- support for arrays
 - support for aggregates and type lowering pass
+  - add a casting operation to allow for conversion to/from simply-typed values
+  - add syntax for arbitrary-bitwidth simple values
 - support for "macros" in C++ (as codegen visitor pass hooks)
+- ask/provide abstraction for bypass (in backend and frontend)
 - transactional state macros (or primitives?)
 - superscalar primitive? (alters the pipelining transform)
 - proper lexical scope and non-hacky function inlining

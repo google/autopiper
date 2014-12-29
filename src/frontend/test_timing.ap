@@ -3,14 +3,12 @@ func entry main() : void {
     let y = x + x;
 
     timing {
-        stage 0;
         let z = y + y;
         stage 1;
         let w = z + z;
 
         let result : int64 = 0;
         timing {
-            stage 0;
             stage 10;
             result = w + w;
         }

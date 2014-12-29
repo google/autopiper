@@ -216,6 +216,16 @@ CodeGenPass::ModifyASTStmtTimingPre(ASTRef<ASTStmtTiming>& node) {
     timevar->name = ctx_->GenSym("timing");
     ctx_->ir()->timevar_map[timevar->name] = timevar.get();
     timing_stack_.push_back(timevar.get());
+
+    // Create an implicit barrier with offset 0.
+    unique_ptr<IRStmt> timing_barrier(new IRStmt());
+    timing_barrier->valnum = ctx_->Valnum();
+    timing_barrier->type = IRStmtTimingBarrier;
+    timing_barrier->timevar = timevar.get();
+    timevar->uses.push_back(timing_barrier.get());
+    timing_barrier->time_offset = 0;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(timing_barrier));
+
     ctx_->ir()->timevars.push_back(move(timevar));
     return VISIT_CONTINUE;
 }

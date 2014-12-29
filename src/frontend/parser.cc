@@ -270,6 +270,8 @@ bool Parser::ParseStmt(ASTStmt* st) {
     HANDLE_STMT_TYPE("kill", kill, Kill);
     HANDLE_STMT_TYPE("killyounger", killyounger, KillYounger);
     HANDLE_STMT_TYPE("killif", killif, KillIf);
+    HANDLE_STMT_TYPE("timing", timing, Timing);
+    HANDLE_STMT_TYPE("stage", stage, Stage);
     HANDLE_STMT_TYPE("spawn", spawn, Spawn);
     HANDLE_STMT_TYPE("return", return_, Return);
 
@@ -438,6 +440,21 @@ bool Parser::ParseStmtKillIf(ASTStmtKillIf* killif) {
     if (!killif->condition) {
         return false;
     }
+    return Consume(Token::SEMICOLON);
+}
+
+bool Parser::ParseStmtTiming(ASTStmtTiming* timing) {
+    timing->body.reset(new ASTStmt());
+    return ParseStmt(timing->body.get());
+}
+
+bool Parser::ParseStmtStage(ASTStmtStage* stage) {
+    if (!Expect(Token::INT_LITERAL)) {
+        return false;
+    }
+    stage->offset = static_cast<int>(CurToken().int_literal);
+    Consume();
+
     return Consume(Token::SEMICOLON);
 }
 

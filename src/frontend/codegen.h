@@ -251,6 +251,9 @@ class CodeGenPass : public ASTVisitorContext {
         virtual Result ModifyASTStmtKillYoungerPost(
                 ASTRef<ASTStmtKillYounger>& node);
         virtual Result ModifyASTStmtKillIfPost(ASTRef<ASTStmtKillIf>& node);
+        virtual Result ModifyASTStmtTimingPre(ASTRef<ASTStmtTiming>& node);
+        virtual Result ModifyASTStmtTimingPost(ASTRef<ASTStmtTiming>& node);
+        virtual Result ModifyASTStmtStagePost(ASTRef<ASTStmtStage>& node);
         virtual Result ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node);
 
         // Expr codegen. Post-hook so that ops are already materialized.
@@ -303,6 +306,9 @@ class CodeGenPass : public ASTVisitorContext {
         void HandleBreakContinue(LoopFrame* frame,
                 std::map<IRBB*, SubBindingMap>& edge_map,
                 IRBB* target);
+
+        // (lexical) stack of currently open timing {} blocks.
+        std::vector<IRTimeVar*> timing_stack_;
 };
 
 }  // namespace frontend

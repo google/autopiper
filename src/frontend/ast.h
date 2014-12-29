@@ -73,6 +73,8 @@ struct ASTStmtReturn;
 struct ASTStmtKill;
 struct ASTStmtKillYounger;
 struct ASTStmtKillIf;
+struct ASTStmtTiming;
+struct ASTStmtStage;
 struct ASTStmtExpr;
 
 struct ASTExpr;
@@ -170,6 +172,8 @@ struct ASTStmt : public ASTBase {
     ASTRef<ASTStmtKill> kill;
     ASTRef<ASTStmtKillYounger> killyounger;
     ASTRef<ASTStmtKillIf> killif;
+    ASTRef<ASTStmtTiming> timing;
+    ASTRef<ASTStmtStage> stage;
     ASTRef<ASTStmtExpr> expr;
 };
 
@@ -239,6 +243,14 @@ struct ASTStmtKillYounger : public ASTBase {
 
 struct ASTStmtKillIf : public ASTBase {
     ASTRef<ASTExpr> condition;
+};
+
+struct ASTStmtTiming : public ASTBase {
+    ASTRef<ASTStmt> body;
+};
+
+struct ASTStmtStage : public ASTBase {
+    int offset;
 };
 
 struct ASTExpr : public ASTBase {
@@ -335,6 +347,8 @@ AST_METHODS(ASTStmtReturn);
 AST_METHODS(ASTStmtKill);
 AST_METHODS(ASTStmtKillYounger);
 AST_METHODS(ASTStmtKillIf);
+AST_METHODS(ASTStmtTiming);
+AST_METHODS(ASTStmtStage);
 AST_METHODS(ASTStmtExpr);
 AST_METHODS(ASTExpr);
 AST_METHODS(ASTTypeField);

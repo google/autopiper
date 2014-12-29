@@ -210,6 +210,45 @@ CodeGenPass::ModifyASTStmtKillIfPost(ASTRef<ASTStmtKillIf>& node) {
     return VISIT_CONTINUE;
 }
 
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtTimingPre(ASTRef<ASTStmtTiming>& node) {
+    unique_ptr<IRTimeVar> timevar(new IRTimeVar());
+    timevar->name = ctx_->GenSym("timing");
+    ctx_->ir()->timevar_map[timevar->name] = timevar.get();
+    timing_stack_.push_back(timevar.get());
+    ctx_->ir()->timevars.push_back(move(timevar));
+    return VISIT_CONTINUE;
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtTimingPost(ASTRef<ASTStmtTiming>& node) {
+    timing_stack_.pop_back();
+    return VISIT_CONTINUE;
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtStagePost(ASTRef<ASTStmtStage>& node) {
+    if (timing_stack_.empty()) {
+        Error(node.get(),
+                "'stage' statement appears outside of a timing {} block. "
+                "Staging barriers can occur only inside the context of a "
+                "timing {} block.");
+        return VISIT_END;
+    }
+    IRTimeVar* timevar = timing_stack_.back();
+
+    unique_ptr<IRStmt> timing_barrier(new IRStmt());
+    timing_barrier->valnum = ctx_->Valnum();
+    timing_barrier->type = IRStmtTimingBarrier;
+    timing_barrier->timevar = timevar;
+    timevar->uses.push_back(timing_barrier.get());
+    timing_barrier->time_offset = node->offset;
+
+    ctx_->AddIRStmt(ctx_->CurBB(), move(timing_barrier));
+
+    return VISIT_CONTINUE;
+}
+
 static IRStmtOp ExprTypeToOpType(ASTExpr::Op op) {
     switch (op) {
 #define T(ast, ir) \

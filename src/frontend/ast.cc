@@ -135,6 +135,8 @@ AST_PRINTER(ASTStmt) {
     T(kill);
     T(killyounger);
     T(killif);
+    T(timing);
+    T(stage);
     T(expr);
 #undef T
     out << I(0) << ")" << endl;
@@ -260,6 +262,17 @@ AST_PRINTER(ASTStmtKillIf) {
     out << I(0) << "(stmt-kill-if " << node << endl;
     P(node->condition.get(), 1);
     out << I(0) << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtTiming) {
+    out << I(0) << "(stmt-timing " << node << endl;
+    P(node->body.get(), 1);
+    out << I(0) << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtStage) {
+    out << I(0) << "(stmt-stage " << node << " "
+        << node->offset << ")" << endl;
 }
 
 AST_PRINTER(ASTStmtExpr) {
@@ -438,6 +451,8 @@ AST_CLONE(ASTStmt) {
     SUB(kill);
     SUB(killyounger);
     SUB(killif);
+    SUB(timing);
+    SUB(stage);
     SUB(expr);
     return ret;
 }
@@ -523,6 +538,18 @@ AST_CLONE(ASTStmtKillYounger) {
 AST_CLONE(ASTStmtKillIf) {
     SETUP(ASTStmtKillIf);
     SUB(condition);
+    return ret;
+}
+
+AST_CLONE(ASTStmtTiming) {
+    SETUP(ASTStmtTiming);
+    SUB(body);
+    return ret;
+}
+
+AST_CLONE(ASTStmtStage) {
+    SETUP(ASTStmtStage);
+    PRIM(offset);
     return ret;
 }
 

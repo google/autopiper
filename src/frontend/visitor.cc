@@ -95,6 +95,8 @@ VISIT(ASTStmt, {
     T(kill, Kill)
     T(killyounger, KillYounger)
     T(killif, KillIf)
+    T(timing, Timing)
+    T(stage, Stage)
     T(expr, Expr)
 })
 
@@ -179,6 +181,14 @@ VISIT(ASTStmtKillIf, {
         CHECK(VisitASTExpr(node->condition.get(), context));
     }
 })
+
+VISIT(ASTStmtTiming, {
+    if (node->body) {
+        CHECK(VisitASTStmt(node->body.get(), context));
+    }
+})
+
+VISIT(ASTStmtStage, {})
 
 VISIT(ASTStmtExpr, {
     CHECK(VisitASTExpr(node->expr.get(), context));
@@ -286,6 +296,8 @@ MODIFY(ASTStmt, {
     T(kill, Kill)
     T(killyounger, KillYounger)
     T(killif, KillIf)
+    T(timing, Timing)
+    T(stage, Stage)
     T(expr, Expr)
 })
 
@@ -368,6 +380,14 @@ MODIFY(ASTStmtKillYounger, {})
 MODIFY(ASTStmtKillIf, {
     FIELD(node->condition, ASTExpr);
 })
+
+MODIFY(ASTStmtTiming, {
+    if (node->body) {
+        FIELD(node->body, ASTStmt);
+    }
+})
+
+MODIFY(ASTStmtStage, {})
 
 MODIFY(ASTStmtExpr, {
     FIELD(node->expr, ASTExpr);

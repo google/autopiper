@@ -152,6 +152,64 @@ CodeGenPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
     return VISIT_CONTINUE;
 }
 
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtKillPost(ASTRef<ASTStmtKill>& node) {
+    unique_ptr<IRStmt> stmt(new IRStmt());
+    stmt->valnum = ctx_->Valnum();
+    stmt->type = IRStmtKill;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(stmt));
+    return VISIT_CONTINUE;
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtKillYoungerPost(
+                ASTRef<ASTStmtKillYounger>& node) {
+    unique_ptr<IRStmt> stmt(new IRStmt());
+    stmt->valnum = ctx_->Valnum();
+    stmt->type = IRStmtKillYounger;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(stmt));
+    return VISIT_CONTINUE;
+}
+
+static bool VerifyNoSideEffects(ASTExpr* expr, ErrorCollector* coll) {
+    // The only way for an expr to perform a side-effect is for it to include a
+    // stmt block (which in turn may contain any statement) or for it to be an
+    // array reference.
+    if (expr->op == ASTExpr::STMTBLOCK ||
+        expr->op == ASTExpr::ARRAY_REF) {
+        coll->ReportError(expr->loc, ErrorCollector::ERROR,
+                "Expression contains a potential side-effect "
+                "(possibly a function call or a statement-block expression "
+                "or an array read), which is not allowed in a kill-if "
+                "condition. Such conditions may only contain simple "
+                "port/chan reads, variable references, and computations "
+                "on those values.");
+        return false;
+    }
+    for (auto& op : expr->ops) {
+        if (!VerifyNoSideEffects(op.get(), coll)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtKillIfPost(ASTRef<ASTStmtKillIf>& node) {
+    // Verify that condition contains only side-effect-free operations.
+    if (!VerifyNoSideEffects(node->condition.get(), Errors())) {
+        return VISIT_END;
+    }
+    unique_ptr<IRStmt> stmt(new IRStmt());
+    stmt->valnum = ctx_->Valnum();
+    stmt->type = IRStmtKillIf;
+    IRStmt* cond = ctx_->GetIRStmt(node->condition.get());
+    stmt->args.push_back(cond);
+    stmt->arg_nums.push_back(cond->valnum);
+    ctx_->AddIRStmt(ctx_->CurBB(), move(stmt));
+    return VISIT_CONTINUE;
+}
+
 static IRStmtOp ExprTypeToOpType(ASTExpr::Op op) {
     switch (op) {
 #define T(ast, ir) \

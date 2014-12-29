@@ -92,6 +92,9 @@ VISIT(ASTStmt, {
     T(write, Write)
     T(spawn, Spawn)
     T(return_, Return)
+    T(kill, Kill)
+    T(killyounger, KillYounger)
+    T(killif, KillIf)
     T(expr, Expr)
 })
 
@@ -165,6 +168,16 @@ VISIT(ASTStmtSpawn, {
 
 VISIT(ASTStmtReturn, {
     CHECK(VisitASTExpr(node->value.get(), context));
+})
+
+VISIT(ASTStmtKill, {})
+
+VISIT(ASTStmtKillYounger, {})
+
+VISIT(ASTStmtKillIf, {
+    if (node->condition) {
+        CHECK(VisitASTExpr(node->condition.get(), context));
+    }
 })
 
 VISIT(ASTStmtExpr, {
@@ -270,6 +283,9 @@ MODIFY(ASTStmt, {
     T(write, Write)
     T(spawn, Spawn)
     T(return_, Return)
+    T(kill, Kill)
+    T(killyounger, KillYounger)
+    T(killif, KillIf)
     T(expr, Expr)
 })
 
@@ -343,6 +359,14 @@ MODIFY(ASTStmtSpawn, {
 
 MODIFY(ASTStmtReturn, {
     FIELD(node->value, ASTExpr);
+})
+
+MODIFY(ASTStmtKill, {})
+
+MODIFY(ASTStmtKillYounger, {})
+
+MODIFY(ASTStmtKillIf, {
+    FIELD(node->condition, ASTExpr);
 })
 
 MODIFY(ASTStmtExpr, {

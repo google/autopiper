@@ -60,6 +60,9 @@ class Parser : public ParserBase {
         bool ParseStmtWrite(ASTStmtWrite* write);
         bool ParseStmtSpawn(ASTStmtSpawn* spawn);
         bool ParseStmtReturn(ASTStmtReturn* return_);
+        bool ParseStmtKill(ASTStmtKill* kill);
+        bool ParseStmtKillYounger(ASTStmtKillYounger* killyounger);
+        bool ParseStmtKillIf(ASTStmtKillIf* killif);
 
         ASTRef<ASTExpr>  ParseExpr();
         ASTRef<ASTExpr>  ParseExprGroup1();   // group 1:  ternary op  (?:)

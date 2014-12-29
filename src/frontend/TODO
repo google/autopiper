@@ -1,8 +1,5 @@
 - support for all IR-supported primitives at language level:
-  - kill
-  - killyounger
-  - valid_if
-  - timing constraints
+  - timing constraints (timing {} block with 'stage N' statements)
 - ask/provide abstraction for bypass (in backend and frontend)
 - support for aggregates and type lowering pass
 - support for "macros" in C++ (as codegen visitor pass hooks)

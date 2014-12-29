@@ -267,6 +267,9 @@ bool Parser::ParseStmt(ASTStmt* st) {
     HANDLE_STMT_TYPE("break", break_, Break);
     HANDLE_STMT_TYPE("continue", continue_, Continue);
     HANDLE_STMT_TYPE("write", write, Write);
+    HANDLE_STMT_TYPE("kill", kill, Kill);
+    HANDLE_STMT_TYPE("killyounger", killyounger, KillYounger);
+    HANDLE_STMT_TYPE("killif", killif, KillIf);
     HANDLE_STMT_TYPE("spawn", spawn, Spawn);
     HANDLE_STMT_TYPE("return", return_, Return);
 
@@ -417,6 +420,22 @@ bool Parser::ParseStmtSpawn(ASTStmtSpawn* spawn) {
 bool Parser::ParseStmtReturn(ASTStmtReturn* return_) {
     return_->value = ParseExpr();
     if (!return_->value) {
+        return false;
+    }
+    return Consume(Token::SEMICOLON);
+}
+
+bool Parser::ParseStmtKill(ASTStmtKill* kill) {
+    return Consume(Token::SEMICOLON);
+}
+
+bool Parser::ParseStmtKillYounger(ASTStmtKillYounger* killyounger) {
+    return Consume(Token::SEMICOLON);
+}
+
+bool Parser::ParseStmtKillIf(ASTStmtKillIf* killif) {
+    killif->condition = ParseExpr();
+    if (!killif->condition) {
         return false;
     }
     return Consume(Token::SEMICOLON);

@@ -1,0 +1,14 @@
+func entry main() : void {
+    spawn {
+        kill;
+    }
+
+    spawn {
+        killyounger;
+    }
+
+    spawn {
+        let p : port int32 = port "kill_port";
+        killif (read p > 0);
+    }
+}

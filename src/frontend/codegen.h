@@ -247,6 +247,10 @@ class CodeGenPass : public ASTVisitorContext {
         virtual Result ModifyASTStmtBreakPost(ASTRef<ASTStmtBreak>& node);
         virtual Result ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node);
         virtual Result ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node);
+        virtual Result ModifyASTStmtKillPost(ASTRef<ASTStmtKill>& node);
+        virtual Result ModifyASTStmtKillYoungerPost(
+                ASTRef<ASTStmtKillYounger>& node);
+        virtual Result ModifyASTStmtKillIfPost(ASTRef<ASTStmtKillIf>& node);
         virtual Result ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node);
 
         // Expr codegen. Post-hook so that ops are already materialized.

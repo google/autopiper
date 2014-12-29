@@ -70,6 +70,9 @@ struct ASTStmtContinue;
 struct ASTStmtWrite;
 struct ASTStmtSpawn;
 struct ASTStmtReturn;
+struct ASTStmtKill;
+struct ASTStmtKillYounger;
+struct ASTStmtKillIf;
 struct ASTStmtExpr;
 
 struct ASTExpr;
@@ -164,6 +167,9 @@ struct ASTStmt : public ASTBase {
     ASTRef<ASTStmtWrite> write;
     ASTRef<ASTStmtSpawn> spawn;
     ASTRef<ASTStmtReturn> return_;
+    ASTRef<ASTStmtKill> kill;
+    ASTRef<ASTStmtKillYounger> killyounger;
+    ASTRef<ASTStmtKillIf> killif;
     ASTRef<ASTStmtExpr> expr;
 };
 
@@ -221,6 +227,18 @@ struct ASTStmtSpawn : public ASTBase {
 
 struct ASTStmtReturn : public ASTBase {
     ASTRef<ASTExpr> value;
+};
+
+struct ASTStmtKill : public ASTBase {
+    // Nothing.
+};
+
+struct ASTStmtKillYounger : public ASTBase {
+    // Nothing.
+};
+
+struct ASTStmtKillIf : public ASTBase {
+    ASTRef<ASTExpr> condition;
 };
 
 struct ASTExpr : public ASTBase {
@@ -314,6 +332,9 @@ AST_METHODS(ASTStmtContinue);
 AST_METHODS(ASTStmtWrite);
 AST_METHODS(ASTStmtSpawn);
 AST_METHODS(ASTStmtReturn);
+AST_METHODS(ASTStmtKill);
+AST_METHODS(ASTStmtKillYounger);
+AST_METHODS(ASTStmtKillIf);
 AST_METHODS(ASTStmtExpr);
 AST_METHODS(ASTExpr);
 AST_METHODS(ASTTypeField);

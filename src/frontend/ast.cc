@@ -132,6 +132,9 @@ AST_PRINTER(ASTStmt) {
     T(write);
     T(spawn);
     T(return_);
+    T(kill);
+    T(killyounger);
+    T(killif);
     T(expr);
 #undef T
     out << I(0) << ")" << endl;
@@ -242,6 +245,20 @@ AST_PRINTER(ASTStmtSpawn) {
 AST_PRINTER(ASTStmtReturn) {
     out << I(0) << "(stmt-return " << node << endl;
     P(node->value.get(), 1);
+    out << I(0) << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtKill) {
+    out << I(0) << "(stmt-kill " << node << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtKillYounger) {
+    out << I(0) << "(stmt-killyounger " << node << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtKillIf) {
+    out << I(0) << "(stmt-kill-if " << node << endl;
+    P(node->condition.get(), 1);
     out << I(0) << ")" << endl;
 }
 
@@ -418,6 +435,9 @@ AST_CLONE(ASTStmt) {
     SUB(write);
     SUB(spawn);
     SUB(return_);
+    SUB(kill);
+    SUB(killyounger);
+    SUB(killif);
     SUB(expr);
     return ret;
 }
@@ -487,6 +507,22 @@ AST_CLONE(ASTStmtSpawn) {
 AST_CLONE(ASTStmtReturn) {
     SETUP(ASTStmtReturn);
     SUB(value);
+    return ret;
+}
+
+AST_CLONE(ASTStmtKill) {
+    SETUP(ASTStmtKill);
+    return ret;
+}
+
+AST_CLONE(ASTStmtKillYounger) {
+    SETUP(ASTStmtKillYounger);
+    return ret;
+}
+
+AST_CLONE(ASTStmtKillIf) {
+    SETUP(ASTStmtKillIf);
+    SUB(condition);
     return ret;
 }
 

@@ -8,9 +8,7 @@ func entry main() : void {
 
     let x = read global_in;
     let y = x;
-    write global_out, y;
     write anon_port, 1;
-    write anon_port, 0;
     y = y >> 1;
 
     if (y > 0) {

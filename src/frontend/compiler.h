@@ -40,7 +40,11 @@ class Compiler : public boost::noncopyable {
             // Print IR after frontend codegen.
             bool print_ir;
 
-            // Print lowered form after pipelining.
+            // Print IR after backend transforms but before
+            // lowering/pipelining.
+            bool print_backend_ir;
+
+            // Print lowered form after lowering/pipelining.
             bool print_lowered;
 
             // Autopiper input.
@@ -56,6 +60,7 @@ class Compiler : public boost::noncopyable {
                 : print_ast_orig(false)
                 , print_ast(false)
                 , print_ir(false)
+                , print_backend_ir(false)
                 , print_lowered(false)
             { }
         };

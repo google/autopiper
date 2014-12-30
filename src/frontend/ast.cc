@@ -49,6 +49,9 @@ AST_PRINTER(AST) {
     for (auto& func : node->functions) {
         P(func.get(), 1);
     }
+    for (auto& pragma : node->pragmas) {
+        P(pragma.get(), 1);
+    }
     out << I(0) << ")" << endl;
 }
 
@@ -369,6 +372,13 @@ AST_PRINTER(ASTTypeField) {
     out << I(0) << ")" << endl;
 }
 
+AST_PRINTER(ASTPragma) {
+    out << I(0) << "(pragma " << node << endl;
+    out << I(1) << "(key " << node->key << ")" << endl;
+    out << I(1) << "(value " << node->value << ")" << endl;
+    out << I(0) << ")" << endl;
+}
+
 #undef P
 #undef I
 #undef AST_PRINTER
@@ -572,6 +582,13 @@ AST_CLONE(ASTTypeField) {
     SETUP(ASTTypeField);
     SUB(ident);
     SUB(type);
+    return ret;
+}
+
+AST_CLONE(ASTPragma) {
+    SETUP(ASTPragma);
+    PRIM(key);
+    PRIM(value);
     return ret;
 }
 

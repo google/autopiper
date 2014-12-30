@@ -200,6 +200,9 @@ TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
 
 static int BignumLog2(ASTBignum num) {
     int bits = 0;
+    if (num == 0) {
+        return 1;
+    }
     while (num != 0) {
         bits++;
         num >>= 1;
@@ -280,7 +283,7 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
             }
 
             ASTBignum diff = node->ops[1]->constant - node->ops[2]->constant;
-            int width = static_cast<int>(diff);
+            int width = static_cast<int>(diff) + 1;
             if (width < 0) width = -width;
             ConveyConstType(n, InferredType(width));
 
@@ -435,6 +438,13 @@ bool TypeInferPass::Infer(ErrorCollector* coll) {
             break;
         }
         iters++;
+    }
+
+    // Now, for any expanding constants remaining, fix at the current width.
+    for (auto& node : nodes_) {
+        if (node->type_.type == InferredType::EXPANDING_CONST) {
+            node->type_.type = InferredType::RESOLVED;
+        }
     }
 
     // Now validate the result.

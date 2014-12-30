@@ -97,6 +97,7 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
     backend_options_.input_ir = ir.get();
     backend_options_.filename = "(ir)";
     backend_options_.output = options.output;
+    backend_options_.print_ir = options.print_backend_ir;
     backend_options_.print_lowered = options.print_lowered;
     if (!backend_.CompileFile(backend_options_, collector)) {
         throw autopiper::Exception(

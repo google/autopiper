@@ -689,26 +689,48 @@ bool BuildPipeDAG(IRProgram* program,
     // because we avoid generating extra join barriers where unnecessary (BBs
     // with no side-effects).
     map<const IRBB*, vector<IRStmt*>> last_side_effect;
+    // Map of set of timing barriers that must come before any unconstrained
+    // (side-effect-free) op after the given BB.
+    map<const IRBB*, vector<IRStmt*>> last_timing_barriers;
+    // Map of set of unconstrained (side-effect-free) ops at the end of the
+    // given BB that must be constrained behind any new timing barriers.
+    map<const IRBB*, vector<IRStmt*>> unconstrained_pure_ops;
 
     for (auto* bb : rpo.RPO()) {
         vector<IRStmt*> pred_barriers;
+        vector<IRStmt*> timing_barriers;
+        vector<IRStmt*> pure_ops;
         for (auto* pred : rpo.Preds(bb)) {
             pred_barriers.insert(pred_barriers.end(),
                     last_side_effect[pred].begin(),
                     last_side_effect[pred].end());
+            timing_barriers.insert(timing_barriers.end(),
+                    last_timing_barriers[pred].begin(),
+                    last_timing_barriers[pred].end());
+            pure_ops.insert(pure_ops.end(),
+                    unconstrained_pure_ops[pred].begin(),
+                    unconstrained_pure_ops[pred].end());
         }
 
         IRStmt* last = nullptr;
+        IRStmt* last_timing_barrier = nullptr;
         if (rpo.Preds(bb).empty() && pipe->spawn) {
             last = pipe->spawn;
         }
         for (auto& stmt : bb->stmts) {
             if (!IRHasSideEffects(stmt->type)) {
-                // Non-side-effecting ops are constrained only to come after
-                // the spawn point for this pipe.
+                // Non-side-effecting ops are constrained to come after the
+                // spawn point for this pipe, and after the last timing
+                // barrier.
                 if (pipe->spawn) {
                     stmt->pipedag_deps.push_back(pipe->spawn);
                 }
+                if (last_timing_barrier) {
+                    stmt->pipedag_deps.push_back(last_timing_barrier);
+                } else {
+                    stmt->pipedag_deps = timing_barriers;
+                }
+                pure_ops.push_back(stmt.get());
                 continue;
             }
             if (stmt->type == IRStmtIf || stmt->type == IRStmtJmp) continue;
@@ -718,6 +740,13 @@ bool BuildPipeDAG(IRProgram* program,
                 stmt->pipedag_deps.push_back(last);
             }
             last = stmt.get();
+            if (stmt->type == IRStmtTimingBarrier) {
+                last_timing_barrier = stmt.get();
+                for (auto* op : pure_ops) {
+                    stmt->pipedag_deps.push_back(op);
+                }
+                pure_ops.clear();
+            }
         }
 
         if (last) {
@@ -725,6 +754,12 @@ bool BuildPipeDAG(IRProgram* program,
         } else {
             last_side_effect[bb] = pred_barriers;
         }
+        if (last_timing_barrier) {
+            last_timing_barriers[bb].push_back(last_timing_barrier);
+        } else {
+            last_timing_barriers[bb] = timing_barriers;
+        }
+        unconstrained_pure_ops[bb] = pure_ops;
     }
 
     // Add pipe-DAG edges from chan defs to chan uses. (Note: ports are not
@@ -1227,8 +1262,10 @@ vector<unique_ptr<PipeSys>> IRProgram::Lower(ErrorCollector* coll) {
 
     // For each PipeSys, perform pipe conversion and predication.
 
-    StandardTimingModel timing_model;
-    PipeTimer timer(&timing_model);
+    unique_ptr<TimingModel> timing_model =
+        TimingModel::New(this->timing_model);
+
+    PipeTimer timer(timing_model.get());
 
     for (auto& sys : pipesystems) {
         // Check that chans are only used within their own extracted pipes. This is

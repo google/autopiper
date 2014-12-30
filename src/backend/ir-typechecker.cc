@@ -240,6 +240,7 @@ bool CheckMinWidth(IRStmt* stmt, int minwidth, ErrorCollector* collector) {
         collector->ReportError(stmt->location, ErrorCollector::ERROR,
                 strprintf("Statement must have width of at least %d",
                     minwidth));
+        abort();
         return false;
     }
     return true;
@@ -299,7 +300,7 @@ bool CheckStmtWidth(IRStmt* stmt, ErrorCollector* collector) {
                             return false;
                         }
                         bignum diff = stmt->args[1]->constant - stmt->args[2]->constant;
-                        int width = static_cast<int>(diff);
+                        int width = static_cast<int>(diff) + 1;
                         if (width < 0) width = -width;
                         if (!CheckExactWidth(stmt, width, collector)) return false;
                     }

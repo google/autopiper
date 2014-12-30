@@ -45,6 +45,7 @@ struct IRProgram {
         next_valnum = 1;
         next_anon_timevar = 1;
         crosslinked_args_bbs = false;
+        timing_model = "null";
     }
 
     std::vector<std::unique_ptr<IRBB>> bbs;
@@ -53,10 +54,14 @@ struct IRProgram {
     std::vector<std::unique_ptr<IRTimeVar>> timevars;
     std::map<std::string, IRTimeVar*> timevar_map;
 
-    std::vector<IRBB*> entries;  // top-level entry points
+    // timing model -- "null" by default.
+    std::string timing_model;
 
-    int next_valnum;
-    int next_anon_timevar;
+    // top-level entry points -- set during parsing.
+    std::vector<IRBB*> entries;
+
+    // Set when generating the IRProgram internally, e.g. in the frontend, so
+    // that crosslinking of arg valnums and targets does not occur.
     bool crosslinked_args_bbs;
 
     static std::unique_ptr<IRProgram> Parse(const std::string& filename,
@@ -67,7 +72,8 @@ struct IRProgram {
     bool Typecheck(ErrorCollector* collector);
     std::vector<std::unique_ptr<PipeSys>> Lower(ErrorCollector* collector);
 
-    std::vector<const IRBB*> Roots() const;  // top-level entry and any spawn points
+    // top-level entry and any spawn points
+    std::vector<const IRBB*> Roots() const;
 
     int GetValnum() {
         return next_valnum++;
@@ -76,6 +82,10 @@ struct IRProgram {
     IRTimeVar* GetTimeVar();
 
     std::string ToString() const;
+
+    // Internal: for valnum allocation.
+    int next_valnum;
+    int next_anon_timevar;
 };
 
 struct IRBB {

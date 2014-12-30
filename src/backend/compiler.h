@@ -46,7 +46,8 @@ class BackendCompiler : public boost::noncopyable {
             bool print_lowered;
 
             Options()
-                : print_ir(false)
+                : input_ir(nullptr)
+                , print_ir(false)
                 , print_lowered(false)
             {}
         };

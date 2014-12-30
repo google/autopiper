@@ -79,12 +79,16 @@ struct ASTStmtExpr;
 
 struct ASTExpr;
 
+struct ASTPragma;
+
 struct ASTTypeField;
 
 struct AST : public ASTBase {
     int gencounter;
     ASTVector<ASTFunctionDef> functions;
     ASTVector<ASTTypeDef> types;
+
+    ASTVector<ASTPragma> pragmas;
 
     // ASTExprs that correspond to IRStmts that have no direct analogue to any
     // other part of the AST. The need to create these arises because of the
@@ -316,6 +320,11 @@ struct ASTExpr : public ASTBase {
     { constant = constant_; }
 };
 
+struct ASTPragma : public ASTBase {
+    std::string key;
+    std::string value;
+};
+
 template<typename T>
 void PrintAST(const T* node, std::ostream& out, int indent = 0);
 template<typename T>
@@ -352,6 +361,7 @@ AST_METHODS(ASTStmtStage);
 AST_METHODS(ASTStmtExpr);
 AST_METHODS(ASTExpr);
 AST_METHODS(ASTTypeField);
+AST_METHODS(ASTPragma);
 
 #undef AST_METHODS
 

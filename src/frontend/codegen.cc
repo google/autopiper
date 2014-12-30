@@ -933,6 +933,14 @@ CodeGenPass::ModifyASTStmtSpawnPre(ASTRef<ASTStmtSpawn>& node) {
     return VISIT_TERMINAL;
 }
 
+CodeGenPass::Result
+CodeGenPass::ModifyASTPragmaPost(ASTRef<ASTPragma>& node) {
+    if (node->key == "timing_model") {
+        ctx_->ir()->timing_model = node->value;
+    }
+    return VISIT_CONTINUE;
+}
+
 static void MarkSuccs(set<IRBB*>& bb_set, IRBB* root) {
     if (bb_set.find(root) != bb_set.end()) {
         return;

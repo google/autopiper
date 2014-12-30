@@ -60,8 +60,28 @@ bool Parser::Parse(AST* ast) {
                 return false;
             }
             ast->functions.push_back(move(fd));
+        } else if (CurToken().s == "pragma") {
+            Consume();
+            ASTRef<ASTPragma> pragma = New<ASTPragma>();
+            if (!Expect(Token::IDENT)) {
+                return false;
+            }
+            pragma->key = CurToken().s;
+            Consume();
+            if (!Consume(Token::EQUALS)) {
+                return false;
+            }
+            if (!Expect(Token::QUOTED_STRING)) {
+                return false;
+            }
+            pragma->value = CurToken().s;
+            Consume();
+            ast->pragmas.push_back(move(pragma));
+            if (!Consume(Token::SEMICOLON)) {
+                return false;
+            }
         } else {
-            Error("Expected 'type' or 'func' keyword.");
+            Error("Expected 'type', 'func' or 'pragma' keyword.");
             return false;
         }
     }

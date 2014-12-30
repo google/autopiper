@@ -22,6 +22,7 @@
 
 #include <vector>
 #include <memory>
+#include <string>
 
 namespace autopiper {
 
@@ -29,17 +30,27 @@ class TimingModel {
     public:
         virtual int Delay(const IRStmt* stmt) const = 0;
         virtual int DelayPerStage() const = 0;
+
+        static std::unique_ptr<TimingModel> New(std::string name);
 };
 
 class StandardTimingModel : public TimingModel {
     public:
         StandardTimingModel() {}
 
-        int Delay(const IRStmt* stmt) const;
-        int DelayPerStage() const;
+        virtual int Delay(const IRStmt* stmt) const;
+        virtual int DelayPerStage() const;
 
     private:
         static const int kGatesPerStage = 32;  // TODO: parameterize this (knobs on cmdline)
+};
+
+class NullTimingModel : public TimingModel {
+    public:
+        NullTimingModel() {}
+
+        virtual int Delay(const IRStmt* stmt) const { return 0; }
+        virtual int DelayPerStage() const { return 1; }
 };
 
 class PipeTimer {

@@ -229,3 +229,13 @@ bool PipeTimer::TimePipe(PipeSys* sys, ErrorCollector* coll) const {
 
     return true;
 }
+
+unique_ptr<TimingModel> TimingModel::New(string name) {
+    unique_ptr<TimingModel> ret;
+    if (name == "standard") {
+        ret.reset(new StandardTimingModel());
+    } else if (name == "null") {
+        ret.reset(new NullTimingModel());
+    }
+    return ret;
+}

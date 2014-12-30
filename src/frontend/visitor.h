@@ -75,6 +75,7 @@ class ASTVisitor {
         METHODS(ASTStmtExpr)
         METHODS(ASTExpr)
         METHODS(ASTTypeField)
+        METHODS(ASTPragma)
 
 #undef METHODS
 };
@@ -169,6 +170,7 @@ class ASTVisitorContext {
         METHODS(ASTStmtExpr)
         METHODS(ASTExpr)
         METHODS(ASTTypeField)
+        METHODS(ASTPragma)
 
 #undef METHODS
 

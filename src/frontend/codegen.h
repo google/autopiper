@@ -280,6 +280,8 @@ class CodeGenPass : public ASTVisitorContext {
             return VISIT_END;
         }
 
+        virtual Result ModifyASTPragmaPost(ASTRef<ASTPragma>& node);
+
     private:
         CodeGenContext* ctx_;
 

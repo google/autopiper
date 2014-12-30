@@ -45,6 +45,9 @@ VISIT(AST, {
     for (auto& func : node->functions) {
         CHECK(VisitASTFunctionDef(func.get(), context));
     }
+    for (auto& pragma : node->pragmas) {
+        CHECK(VisitASTPragma(pragma.get(), context));
+    }
 })
 
 VISIT(ASTFunctionDef, {
@@ -211,6 +214,8 @@ VISIT(ASTTypeField, {
     CHECK(VisitASTType(node->type.get(), context));
 })
 
+VISIT(ASTPragma, {})
+
 #undef CHECK
 #undef VISIT
 
@@ -245,6 +250,9 @@ MODIFY(AST, {
     }
     for (int i = 0; i < node->functions.size(); i++) {
         FIELD(node->functions[i], ASTFunctionDef);
+    }
+    for (int i = 0; i < node->pragmas.size(); i++) {
+        FIELD(node->pragmas[i], ASTPragma);
     }
 })
 
@@ -409,6 +417,8 @@ MODIFY(ASTTypeField, {
     FIELD(node->ident, ASTIdent);
     FIELD(node->type, ASTType);
 })
+
+MODIFY(ASTPragma, {})
 
 }  // namespace frontend
 }  // namespace autopiper

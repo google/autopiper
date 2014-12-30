@@ -16,13 +16,13 @@ func my_func(a: int32, b: int32) : bool {
     return (a == b);
 }
 
-func complex_lhs() : void {
-    let x : int32[32] = [];
-    let y : AggType[32] = [];
-
-    x[0] = 1;
-    y[x[0]].x = y[x[1]].y;
-}
+#func complex_lhs() : void {
+#    let x : int32[32] = [];
+#    let y : AggType[32] = [];
+#
+#    x[0] = 1;
+#    y[x[0]].x = y[x[1]].y;
+#}
 
 func entry main() : void {
     let global_in : port int32 = port "global_in";
@@ -35,16 +35,14 @@ func entry main() : void {
 
     let x = read global_in;
     let y = x;
-    let z : AggType = [ x = 0, y = 0 ];
+#    let z : AggType = [ x = 0, y = 0 ];
     while (y > 0) {
         write global_out, y;
-        if (y & 1) {
+        if ((y & 1) != 0) {
             write anon_port, 1;
-        } else {
-            write anon_port, 0;
         }
         y = y >> 1;
     }
 
-    complex_lhs();
+    #complex_lhs();
 }

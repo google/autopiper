@@ -34,6 +34,8 @@ static const char* kUsage =
     "        --print-ast:        print the AST before codegen, after transforms.\n"
     "        --print-ir:         print the IR after frontend codegen,\n"
     "                            before backend transforms.\n"
+    "        --print-backend-ir: print the IR after backend transforms,\n"
+    "                            but before lowering.\n"
     "        --print-lowered:    print the lowered pipeline form before backend codegen.\n"
     "        --ir-output <file>: print the IR to the given file (and continue to backend).\n"
     "        -h, --help:         print this help message.\n"
@@ -82,6 +84,9 @@ class FrontendFlags : public CmdlineParser {
                 return FLAG_CONSUMED_KEY;
             } else if (flag == "--print-ir") {
                 driver_->options_.print_ir = true;
+                return FLAG_CONSUMED_KEY;
+            } else if (flag == "--print-backend-ir") {
+                driver_->options_.print_backend_ir = true;
                 return FLAG_CONSUMED_KEY;
             } else if (flag == "--print-lowered") {
                 driver_->options_.print_lowered = true;

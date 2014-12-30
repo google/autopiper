@@ -3,16 +3,28 @@
 - support for aggregates and type lowering pass
   - add a casting operation to allow for conversion to/from simply-typed values
   - add syntax for arbitrary-bitwidth simple values
+- end-to-end tests and harness (with specified test-vector inputs and expected
+  outputs on stimulus/output ports)
 - support for "macros" in C++ (as codegen visitor pass hooks)
 - ask/provide abstraction for bypass (in backend and frontend)
 - transactional state macros (or primitives?)
-- superscalar primitive? (alters the pipelining transform)
 - proper lexical scope and non-hacky function inlining
 - conditional/blocking port hooks
+
+OoO-decomposed-as-macros:
+- queue! macro
+- superscalar primitive? (alters the pipelining transform)
+  - this needs to interact with the transactional-state primitives, produces a
+    "channel mask" that indicates when lower ways are invalidated by
+    dependences on upper ways, and wraps the pipe in a restart-loop to restart
+    partway through superscalar groups.
+- rename! macro
+- scoreboard-scheduler component or macro
+  (a standard OoO backend is scoreboard scheduling composed with renaming)
+
+Far-off goals:
 - support for macros in some other language (Lua? Figure out a way to wrap the
   codegen API and the AST-with-pass-annotations nicely)
 - rework the AST as either protobufs or (maybe) something more
   custom/lighter-weight with explicit visitor support
-- support pragmas to set various timing-model options and/or choose different
-  timing models
 - rewrite the whole thing now that I understand the problem space better

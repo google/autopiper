@@ -245,6 +245,12 @@ bool Parser::ParseType(ASTType* ty) {
         if (!Expect(Token::IDENT)) {
             return false;
         }
+    } else if (CurToken().s == "reg") {
+        ty->is_reg = true;
+        Consume();
+        if (!Expect(Token::IDENT)) {
+            return false;
+        }
     }
     ty->ident = New<ASTIdent>();
     if (!ParseIdent(ty->ident.get())) {
@@ -785,6 +791,24 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             Consume();
             ret->op = ASTExpr::ARRAY_INIT;
             return ret;
+        }
+
+        if (ident == "reg") {
+            Consume();
+            if (TryExpect(Token::IDENT)) {
+                ret->op = ASTExpr::REG_REF;
+                ASTRef<ASTExpr> var_ref(new ASTExpr());
+                var_ref->op = ASTExpr::VAR;
+                var_ref->ident.reset(new ASTIdent());
+                if (!ParseIdent(var_ref->ident.get())) {
+                    return astnull<ASTExpr>();
+                }
+                ret->ops.push_back(move(var_ref));
+                return ret;
+            } else {
+                ret->op = ASTExpr::REG_INIT;
+                return ret;
+            }
         }
 
         // Otherwise, it's a variable reference.

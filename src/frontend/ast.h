@@ -149,6 +149,7 @@ struct ASTType : public ASTBase {
     ASTRef<ASTIdent> ident;
     bool is_port;
     bool is_chan;
+    bool is_reg;
     bool is_array;
     int array_length;
 
@@ -157,6 +158,7 @@ struct ASTType : public ASTBase {
     ASTType()
         : is_port(false),
           is_chan(false),
+          is_reg(false),
           is_array(false),
           array_length(-1), 
           def(nullptr) {}
@@ -292,6 +294,9 @@ struct ASTExpr : public ASTBase {
         AGGLITERALFIELD,
 
         ARRAY_INIT,
+
+        REG_REF,
+        REG_INIT,
 
         FUNCCALL,
 

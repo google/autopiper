@@ -243,6 +243,7 @@ class CodeGenPass : public ASTVisitorContext {
         // straight-line-code statement codegen hooks. We do codegen after
         // sub-stmts because exprs in the stmt must be gen'd first.
         virtual Result ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node);
+        virtual Result ModifyASTStmtAssignPre(ASTRef<ASTStmtAssign>& node);
         virtual Result ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node);
         virtual Result ModifyASTStmtBreakPost(ASTRef<ASTStmtBreak>& node);
         virtual Result ModifyASTStmtContinuePost(ASTRef<ASTStmtContinue>& node);

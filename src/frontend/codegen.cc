@@ -104,11 +104,50 @@ CodeGenPass::ModifyASTStmtLetPost(ASTRef<ASTStmtLet>& node) {
 }
 
 CodeGenPass::Result
+CodeGenPass::ModifyASTStmtAssignPre(ASTRef<ASTStmtAssign>& node) {
+    // Never codegen the LHS, because it may contain array or reg references
+    // (for example) that are actually writes, not reads. We manually invoke
+    // codegen on only the RHS subtree.
+    ASTVisitor visitor;
+    if (!visitor.ModifyASTExpr(node->rhs, this)) {
+        return VISIT_END;
+    }
+
+    // Don't recurse.
+    return VISIT_TERMINAL;
+}
+
+CodeGenPass::Result
 CodeGenPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
     if (node->lhs->op == ASTExpr::VAR) {
         // Simple variable assignment.  Associate the binding (let) with the
         // new ASTExpr (the RHS).
         ctx_->Bindings().Set(node->lhs->def, node->rhs.get());
+    } else if (node->lhs->op == ASTExpr::REG_REF) {
+        // Reg write.
+        if (node->lhs->ops[0]->op != ASTExpr::VAR) {
+            Error(node.get(),
+                    "Cannot assign to reg nested in another value.");
+            return VISIT_END;
+        }
+        if (node->lhs->ops[0]->def->rhs->op != ASTExpr::REG_INIT) {
+            Error(node.get(),
+                    "Reg assignment to a non-reg value.");
+            return VISIT_END;
+        }
+        ASTExpr* regdef = node->lhs->ops[0]->def->rhs.get();
+
+        unique_ptr<IRStmt> reg_write(new IRStmt());
+        reg_write->valnum = ctx_->Valnum();
+        reg_write->type = IRStmtRegWrite;
+        reg_write->port_name = regdef->ident->name;
+        reg_write->width = regdef->inferred_type.width;
+
+        IRStmt* value = ctx_->GetIRStmt(node->rhs.get());
+        reg_write->args.push_back(value);
+        reg_write->arg_nums.push_back(value->valnum);
+
+        ctx_->AddIRStmt(ctx_->CurBB(), move(reg_write));
     } else if (node->lhs->op == ASTExpr::ARRAY_REF) {
         // Generate an array-write IR stmt.
         // The first op must be a direct var reference to an array -- arrays
@@ -459,6 +498,35 @@ CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 array_read->port_name = arraydef->ident->name;
 
                 ctx_->AddIRStmt(ctx_->CurBB(), move(array_read), node.get());
+                break;
+            }
+            case ASTExpr::REG_INIT: {
+                // Generate a name for this reg.
+                node->ident.reset(new ASTIdent());
+                node->ident->name = ctx_->GenSym("reg");
+                break;
+            }
+            case ASTExpr::REG_REF: {
+                if (node->ops[0]->op != ASTExpr::VAR) {
+                    Error(node.get(),
+                            "Reg read from something other than variable ref");
+                    return VISIT_END;
+                }
+
+                ASTExpr* regdef = node->ops[0]->def->rhs.get();
+                if (regdef->op != ASTExpr::REG_INIT) {
+                    Error(node.get(),
+                            "Reg read from something other than reg");
+                    return VISIT_END;
+                }
+
+                unique_ptr<IRStmt> reg_read(new IRStmt());
+                reg_read->valnum = ctx_->Valnum();
+                reg_read->type = IRStmtRegRead;
+                reg_read->width = node->inferred_type.width;
+                reg_read->port_name = regdef->ident->name;
+
+                ctx_->AddIRStmt(ctx_->CurBB(), move(reg_read), node.get());
                 break;
             }
             case ASTExpr::STMTBLOCK: {

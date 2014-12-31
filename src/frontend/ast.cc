@@ -106,6 +106,15 @@ AST_PRINTER(ASTType) {
     if (node->is_port) {
         out << " PORT";
     }
+    if (node->is_chan) {
+        out << " CHAN";
+    }
+    if (node->is_reg) {
+        out << " REG";
+    }
+    if (node->is_array) {
+        out << " ARRAY(length = " << node->array_length << ")";
+    }
     out << ")";
 }
 
@@ -319,6 +328,8 @@ AST_PRINTER(ASTExpr) {
         T(FIELD_REF);
         T(ARRAY_REF);
         T(ARRAY_INIT);
+        T(REG_REF);
+        T(REG_INIT);
         T(ARG);
         T(AGGLITERAL);
         T(AGGLITERALFIELD);
@@ -444,6 +455,10 @@ AST_CLONE(ASTType) {
     SETUP(ASTType);
     SUB(ident);
     PRIM(is_port);
+    PRIM(is_chan);
+    PRIM(is_reg);
+    PRIM(is_array);
+    PRIM(array_length);
     return ret;
 }
 

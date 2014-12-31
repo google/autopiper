@@ -253,6 +253,39 @@ void TypeInferPass::EnsureArray(InferenceNode* n) {
     });
 }
 
+void TypeInferPass::ConveyRegRef(
+        InferenceNode* n,
+        InferenceNode* reg) {
+    n->inputs_.push_back(
+            make_pair(
+                [](const vector<InferredType>& args) {
+                    if (args[0].is_reg) {
+                        InferredType ret = args[0];
+                        ret.is_reg = false;
+                        return ret;
+                    } else {
+                        InferredType conflict;
+                        conflict.type = InferredType::CONFLICT;
+                        conflict.conflict_msg = "Expected reg type in reg ref";
+                        return conflict;
+                    }
+                }, vector<InferenceNode*> { reg }));
+
+    EnsureSimple(n);
+}
+
+void TypeInferPass::EnsureReg(InferenceNode* n) {
+    Location loc = n->loc;
+    n->validators_.push_back([loc](InferredType type, ErrorCollector* coll) {
+        if (!type.is_reg) {
+            coll->ReportError(loc, ErrorCollector::ERROR,
+                    "Expected reg type.");
+            return false;
+        }
+        return true;
+    });
+}
+
 TypeInferPass::Result
 TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
     aggs_.reset(new AggTypeResolver(node.get()));
@@ -403,6 +436,14 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
 
         case ASTExpr::ARRAY_INIT:
             EnsureArray(n);
+            break;
+
+        case ASTExpr::REG_INIT:
+            EnsureReg(n);
+            break;
+
+        case ASTExpr::REG_REF:
+            ConveyRegRef(n, arg_types[0]);
             break;
 
         case ASTExpr::AGGLITERAL:

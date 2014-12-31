@@ -52,6 +52,7 @@ struct InferredType {
     int width;        // for primitive and aggregate
     bool is_port;
     bool is_chan;
+    bool is_reg;
     bool is_array;
     int array_size;
 
@@ -60,12 +61,12 @@ struct InferredType {
 
     InferredType()
         : type(UNKNOWN), agg(nullptr), width(-1),
-          is_port(false), is_chan(false), is_array(false),
+          is_port(false), is_chan(false), is_reg(false), is_array(false),
           array_size(-1) {}
 
     explicit InferredType(int width_)
         : type(RESOLVED), agg(nullptr), width(width_),
-          is_port(false), is_chan(false), is_array(false),
+          is_port(false), is_chan(false), is_reg(false), is_array(false),
           array_size(-1) {}
 
     // Join two types. Resolves to a concrete type if either input type is

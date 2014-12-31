@@ -1,0 +1,12 @@
+func entry main() : void {
+    let reg1 : reg int32 = reg;
+    let reg2 : reg bool = reg;
+
+    reg reg2 = 1;
+    let val : bool = reg reg2;
+    if (reg reg2) {
+        reg reg1 = 0xdeadbeef;
+    }
+    let x : int32 = 0;
+    x = reg reg1;
+}

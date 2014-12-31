@@ -154,6 +154,10 @@ class TypeInferPass : public ASTVisitorContext {
         // Ensure that a type is an array.
         void EnsureArray(InferenceNode* n);
 
+        void ConveyRegRef(InferenceNode* n, InferenceNode* reg);
+
+        void EnsureReg(InferenceNode* n);
+
         // Once the pass has run over the AST to collect all type slots and
         // build the inference graph, this function solves the inference graph
         // to arrive at concrete types. It then labels all expression and

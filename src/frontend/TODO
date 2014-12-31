@@ -1,5 +1,4 @@
-- support for storage (load/store ops)
-- support for arrays
+- support for registers (single-element storage)
 - support for aggregates and type lowering pass
   - add a casting operation to allow for conversion to/from simply-typed values
   - add syntax for arbitrary-bitwidth simple values
@@ -18,6 +17,14 @@ OoO-decomposed-as-macros:
     "channel mask" that indicates when lower ways are invalidated by
     dependences on upper ways, and wraps the pipe in a restart-loop to restart
     partway through superscalar groups.
+  - Can we do this with a tweak to ask/provide? Superscalar bypass in a single
+    cycle is like bypass over time in a scalar pipe; so bypass in a 4-way
+    machine is like saying "next 3 ops can't bypass this value". Can 'ask' be
+    tweaked to have a 'not available yet' status? This also allows for natural
+    stall insertion in other cases if we have separate 'generate' and 'provide'
+    ops -- 'generate' starts its scope (to close the danger window and force
+    stalls on dependents) and 'provide' actually yields the value to
+    dependents.
 - rename! macro
 - scoreboard-scheduler component or macro
   (a standard OoO backend is scoreboard scheduling composed with renaming)

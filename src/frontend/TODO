@@ -1,6 +1,3 @@
-- support for aggregates and type lowering pass
-  - add a casting operation to allow for conversion to/from simply-typed values
-  - add syntax for arbitrary-bitwidth simple values
 - end-to-end tests and harness (with specified test-vector inputs and expected
   outputs on stimulus/output ports)
 - support for "macros" in C++ (as codegen visitor pass hooks)

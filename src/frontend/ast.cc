@@ -83,6 +83,9 @@ AST_PRINTER(ASTTypeDef) {
     out << I(1) << "(ident ";
     P(node->ident.get(), 1);
     out << ")" << endl;
+    out << I(1) << "(alias ";
+    P(node->alias.get(), 1);
+    out << ")" << endl;
     for (auto& field : node->fields) {
         P(field.get(), 1);
     }
@@ -440,6 +443,7 @@ AST_CLONE(ASTParam) {
 AST_CLONE(ASTTypeDef) {
     SETUP(ASTTypeDef);
     SUB(ident);
+    SUB(alias);
     VEC(fields);
     return ret;
 }
@@ -494,6 +498,7 @@ AST_CLONE(ASTStmtLet) {
     SUB(lhs);
     SUB(type);
     SUB(rhs);
+    PRIM(inferred_type);
     return ret;
 }
 
@@ -591,6 +596,8 @@ AST_CLONE(ASTExpr) {
     VEC(ops);
     SUB(ident);
     PRIM(constant);
+    PRIM(def);
+    PRIM(inferred_type);
     return ret;
 }
 

@@ -63,6 +63,9 @@ VISIT(ASTFunctionDef, {
 
 VISIT(ASTTypeDef, {
     CHECK(VisitASTIdent(node->ident.get(), context));
+    if (node->alias) {
+        CHECK(VisitASTType(node->alias.get(), context));
+    }
     for (auto& field : node->fields) {
         CHECK(VisitASTTypeField(field.get(), context));
     }
@@ -269,6 +272,9 @@ MODIFY(ASTFunctionDef, {
 
 MODIFY(ASTTypeDef, {
     FIELD(node->ident, ASTIdent);
+    if (node->alias) {
+        FIELD(node->alias, ASTType);
+    }
     for (int i = 0; i < node->fields.size(); i++) {
         FIELD(node->fields[i], ASTTypeField);
     }

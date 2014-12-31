@@ -33,7 +33,24 @@ namespace frontend {
 class TypeLowerPass : public ASTVisitorContext {
     public:
         TypeLowerPass(ErrorCollector* coll)
-            : ASTVisitorContext(coll) {}
+            : ASTVisitorContext(coll), ast_(nullptr) {}
+
+    protected:
+        // Pre-hook on assignments detects <FIELD_REF> = <...> and desugars to
+        // a read/modify/write. We want this to be a *pre* hook so that we
+        // rewrite the LHS before the expor hook sees it.
+        virtual Result ModifyASTStmtAssignPre(ASTRef<ASTStmtAssign>& node);
+
+        // expr hook rewrites FIELD_REF ops to bitslices.
+        virtual Result ModifyASTExprPost(ASTRef<ASTExpr>& node);
+
+        virtual Result ModifyASTPre(ASTRef<AST>& node) {
+            ast_ = node.get();
+            return VISIT_CONTINUE;
+        }
+
+    private:
+        AST* ast_;
 };
 
 }  // namesapce frontend

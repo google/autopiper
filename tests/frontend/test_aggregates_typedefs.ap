@@ -1,0 +1,34 @@
+type MyType {
+    field1 : int32;
+    field2 : int64;
+    field3 : SubType;
+    field4 : int8;
+}
+
+type SubType {
+    a : int32;
+    b : int32;
+}
+
+type T int32;
+type U port int32;
+
+func entry main() : void {
+    let x : MyType = [
+        field1 = 0xdeadbeef,
+        field2 = 0xfedcba9876543210,
+        field3 = [ a = 1, b = 2 ],
+        field4 = 0xff
+    ];
+
+    x.field2 = 0x1234;
+    x.field3.a = 3;
+    x.field3 = [ a = 42, b = 1 ];
+    let y = x.field4;
+    y = x.field3.a[7:0];
+    y = x.field1[15:8];
+
+    let z : T = x.field1;
+    let p : U = port;
+    write p, z;
+}

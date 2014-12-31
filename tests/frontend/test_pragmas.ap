@@ -1,0 +1,38 @@
+pragma timing_model = "null";
+
+func entry main() : void {
+    let x : int64 = 0;
+    let y : int64 = 0;
+    timing {
+
+        # the placement of timing stage barriers here is somewhat
+        # counter-intuitive until one realizes that the pipe-timing algorithm
+        # first hoists everything early to find the min pipe length then sinks
+        # everything to its latest possible point to minimize value lifetimes
+        # (hence reduce pipe latch count). So the statements below "rest
+        # against" the barriers below them, and the first four multiplications
+        # are actually in the first stage, etc. Best practice is probably to
+        # constrain ops on *both* sides when precise timing is necessary.
+
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        stage 0;
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        stage 1;
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        stage 2;
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        x = (x * y)[63:0];
+        stage 3;
+    }
+}

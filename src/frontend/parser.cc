@@ -192,6 +192,17 @@ bool Parser::ParseTypeDef(ASTTypeDef* def) {
         return false;
     }
     def->ident->type = ASTIdent::TYPE;
+
+    // 'type MyType int32' typedef-style alias case.
+    if (!TryExpect(Token::LBRACE)) {
+        def->alias.reset(new ASTType());
+        if (!ParseType(def->alias.get())) {
+            return false;
+        }
+        return Consume(Token::SEMICOLON);
+    }
+
+    // otherwise, we expect a struct definition with a field list block.
     if (!Consume(Token::LBRACE)) {
         return false;
     }

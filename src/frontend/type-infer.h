@@ -154,9 +154,20 @@ class TypeInferPass : public ASTVisitorContext {
         // Ensure that a type is an array.
         void EnsureArray(InferenceNode* n);
 
+        // Connect a reg value and its underlying value type.
         void ConveyRegRef(InferenceNode* n, InferenceNode* reg);
 
+        // Ensure a type is a reg type.
         void EnsureReg(InferenceNode* n);
+
+        // Connect an aggregate type and an underlying field value extracted by
+        // a field reference.
+        void ConveyFieldRef(InferenceNode* n, InferenceNode* agg,
+                std::string field_name);
+
+        // Connect an aggregate type literal with the types of all of its field
+        // value expressions.
+        void ConveyAggLiteral(InferenceNode* n, ASTExpr* expr);
 
         // Once the pass has run over the AST to collect all type slots and
         // build the inference graph, this function solves the inference graph

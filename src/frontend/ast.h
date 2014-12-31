@@ -116,6 +116,7 @@ struct ASTParam : public ASTBase {
 
 struct ASTTypeDef : public ASTBase {
     ASTRef<ASTIdent> ident;
+    ASTRef<ASTType> alias;
     ASTVector<ASTTypeField> fields;
 
     int width;  // derived by type-infer pass

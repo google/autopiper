@@ -17,6 +17,8 @@
 #include "frontend/agg-types.h"
 #include "common/util.h"
 
+#include <sstream>
+
 using namespace std;
 
 namespace autopiper {
@@ -41,6 +43,7 @@ bool AggTypeResolver::Compute(ErrorCollector* coll) {
     // Initially set all field types according to the type map.
     for (auto& type_pair : map_) {
         ASTTypeDef* type = type_pair.second;
+        if (type->alias) continue;
         for (auto& field : type->fields) {
             InferredType inftype = ResolveType(field->type.get());
             // If this is an aggregate type, keep as 'UNKNOWN'
@@ -48,6 +51,9 @@ bool AggTypeResolver::Compute(ErrorCollector* coll) {
                 inftype.type = InferredType::UNKNOWN;
             }
             field_types[field.get()] = inftype;
+            if (inftype.type == InferredType::RESOLVED) {
+                field->width = inftype.width;
+            }
         }
     }
 
@@ -112,6 +118,7 @@ bool AggTypeResolver::Compute(ErrorCollector* coll) {
     bool have_errors = false;
     for (auto& type_pair : map_) {
         auto* type = type_pair.second;
+        if (type->alias) continue;
         if (typedef_types[type].type == InferredType::CONFLICT ||
             typedef_types[type].type == InferredType::UNKNOWN) {
             coll->ReportError(type->loc, ErrorCollector::ERROR,
@@ -139,6 +146,26 @@ bool AggTypeResolver::Compute(ErrorCollector* coll) {
 InferredType AggTypeResolver::ResolveType(const ASTType* type) {
     InferredType ret;
     if (type) {
+        // Look for a type alias with this name.
+        auto alias_it = map_.find(type->ident->name);
+        if (alias_it != map_.end() && alias_it->second->alias) {
+            ASTRef<ASTType> t = CloneAST(alias_it->second->alias.get());
+            if (type->is_array) {
+                t->is_array = true;
+                t->array_length = type->array_length;
+            }
+            if (type->is_reg) {
+                t->is_reg = true;
+            }
+            if (type->is_port) {
+                t->is_port = true;
+            }
+            if (type->is_chan) {
+                t->is_chan = true;
+            }
+            return ResolveType(t.get());
+        }
+
         ret.is_array = type->is_array;
         ret.is_port = type->is_port;
         ret.is_chan = type->is_chan;
@@ -160,6 +187,21 @@ InferredType AggTypeResolver::ResolveType(const ASTType* type) {
         PRIM(int64, 64);
 
 #undef PRIM
+
+        // Support "int.5678" syntax.
+        if (type->ident->name.substr(0, 4) == "int.") {
+            istringstream is(type->ident->name.substr(4));
+            ret.type = InferredType::RESOLVED;
+            ret.agg = NULL;
+            is >> ret.width;
+            if (ret.width > 0) {
+                return ret;
+            } else {
+                ret.type = InferredType::CONFLICT;
+                ret.conflict_msg = "Invalid int.N syntax";
+                return ret;
+            }
+        }
 
         if (ret.type != InferredType::RESOLVED) {
             // Look for an aggregate type defined with this name.

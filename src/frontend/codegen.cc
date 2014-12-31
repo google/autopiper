@@ -171,6 +171,13 @@ CodeGenPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
         array_write->width = node->rhs->inferred_type.width;
         array_write->port_name = arraydef->ident->name;
 
+        // Manually codegen the index arg, because we disable traversal over
+        // the LHS subtree (to avoid turning the whole ARRAY_REF into a read).
+        ASTVisitor visitor;
+        if (!visitor.ModifyASTExpr(node->lhs->ops[1], this)) {
+            return VISIT_END;
+        }
+
         IRStmt* index_arg = ctx_->GetIRStmt(node->lhs->ops[1].get());
         IRStmt* value = ctx_->GetIRStmt(node->rhs.get());
         array_write->args.push_back(index_arg);

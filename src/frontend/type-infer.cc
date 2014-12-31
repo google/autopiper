@@ -286,6 +286,43 @@ void TypeInferPass::EnsureReg(InferenceNode* n) {
     });
 }
 
+void TypeInferPass::ConveyFieldRef(
+        InferenceNode* n,
+        InferenceNode* agg,
+        std::string field_name) {
+    Location loc = n->loc;
+    AggTypeResolver* resolver = aggs_.get();
+    n->inputs_.push_back(
+            make_pair(
+                [loc, field_name, resolver]
+                (const vector<InferredType>& args) {
+                    if (!args[0].agg) {
+                        InferredType conflict;
+                        conflict.type = InferredType::CONFLICT;
+                        conflict.conflict_msg = "Field ref on non-aggregate value";
+                        return conflict;
+                    } else {
+                        for (auto& field : args[0].agg->fields) {
+                            if (field->ident->name == field_name) {
+                                return resolver->ResolveType(field->type.get());
+                            }
+                        }
+                        InferredType conflict;
+                        conflict.type = InferredType::CONFLICT;
+                        conflict.conflict_msg = "Unknown field name";
+                        return conflict;
+                    }
+                }, vector<InferenceNode*> { agg }));
+}
+
+void TypeInferPass::ConveyAggLiteral(InferenceNode* n, ASTExpr* expr) {
+    for (auto& field : expr->ops) {
+        assert(field->op == ASTExpr::AGGLITERALFIELD);
+        InferenceNode* f_node = NodeForAST(field->ops[0].get());
+        ConveyFieldRef(f_node, n, field->ident->name);
+    }
+}
+
 TypeInferPass::Result
 TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
     aggs_.reset(new AggTypeResolver(node.get()));
@@ -447,12 +484,16 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
             break;
 
         case ASTExpr::AGGLITERAL:
-            assert(false);
+            ConveyAggLiteral(n, node.get());
             break;
 
-        case ASTExpr::FIELD_REF:
-            // TODO
-            assert(false);
+        case ASTExpr::FIELD_REF: {
+            ConveyFieldRef(n, arg_types[0], node->ident->name);
+            break;
+        }
+
+        case ASTExpr::AGGLITERALFIELD:
+            // Handled by AGGLITERAL above.
             break;
 
         default:

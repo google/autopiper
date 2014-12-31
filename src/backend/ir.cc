@@ -184,6 +184,8 @@ string IRStmt::ToString() const {
             os << "arrayread"; break;
         case IRStmtArrayWrite:
             os << "arraywrite"; break;
+        case IRStmtArraySize:
+            os << "arraysize"; break;
         case IRStmtProvide:
             os << "provide"; break;
         case IRStmtUnprovide:

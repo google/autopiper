@@ -155,6 +155,7 @@ enum IRStmtType {
     IRStmtRegWrite,
     IRStmtArrayRead,
     IRStmtArrayWrite,
+    IRStmtArraySize,  // declare an array's size (constant field)
 
     // forwarding: provide and ask
     IRStmtProvide,
@@ -313,11 +314,13 @@ struct IRStorage {
     IRStorage() {
         data_width = 0;
         index_width = 0;
+        elements = 0;
     }
 
     std::string name;
     int data_width;
     int index_width;
+    int elements;
 
     std::vector<IRStmt*> writers;
     std::vector<IRStmt*> readers;

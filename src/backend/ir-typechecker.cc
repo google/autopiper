@@ -207,7 +207,7 @@ bool DeriveStorageSize(IRStorage* storage, ErrorCollector* collector) {
             return false;
         }
     }
-    
+
     return true;
 }
 

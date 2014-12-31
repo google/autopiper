@@ -192,6 +192,67 @@ void TypeInferPass::EnsureSimple(InferenceNode* n) {
             });
 }
 
+static int Log2(int n) {
+    int bits = 1;
+    n--;
+    while (n > 1) {
+        bits++;
+        n >>= 1;
+    }
+    return bits;
+}
+
+void TypeInferPass::ConveyArrayRef(
+        InferenceNode* n,
+        InferenceNode* array,
+        InferenceNode* index) {
+
+    n->inputs_.push_back(
+            make_pair(
+                [](const vector<InferredType>& args) {
+                    if (!args[0].is_array) {
+                        InferredType conflict;
+                        conflict.type = InferredType::CONFLICT;
+                        conflict.conflict_msg =
+                            "Array reference on a non-array value.";
+                        return conflict;
+                    } else {
+                        InferredType ret = args[0];
+                        ret.is_array = false;
+                        return ret;
+                    }
+               }, vector<InferenceNode*> { array }));
+
+    EnsureSimple(index);
+    index->inputs_.push_back(
+            make_pair(
+                [](const vector<InferredType>& args) {
+                    if (!args[0].is_array) {
+                        InferredType conflict;
+                        conflict.type = InferredType::CONFLICT;
+                        conflict.conflict_msg =
+                            "Array reference on a non-array value.";
+                        return conflict;
+                    } else {
+                        int bits = Log2(args[0].array_size);
+                        InferredType ret(bits);
+                        return ret;
+                    }
+                }, vector<InferenceNode*> { array }));
+}
+
+void TypeInferPass::EnsureArray(InferenceNode* n) {
+    Location loc = n->loc;
+    n->validators_.push_back([loc](InferredType type, ErrorCollector* coll) {
+        if (!type.is_array || type.array_size <= 0) {
+            coll->ReportError(loc, ErrorCollector::ERROR,
+                    "Expected array (with nonzero size).");
+            return false;
+        }
+        return true;
+    });
+}
+
 TypeInferPass::Result
 TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
     aggs_.reset(new AggTypeResolver(node.get()));
@@ -336,12 +397,19 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
         case ASTExpr::ARG:
             break;
 
+        case ASTExpr::ARRAY_REF:
+            ConveyArrayRef(n, arg_types[0], arg_types[1]);
+            break;
+
+        case ASTExpr::ARRAY_INIT:
+            EnsureArray(n);
+            break;
+
         case ASTExpr::AGGLITERAL:
             assert(false);
             break;
 
         case ASTExpr::FIELD_REF:
-        case ASTExpr::ARRAY_REF:
             // TODO
             assert(false);
             break;

@@ -53,17 +53,20 @@ struct InferredType {
     bool is_port;
     bool is_chan;
     bool is_array;
+    int array_size;
 
     // Error message if conflicted.
     std::string conflict_msg;
 
     InferredType()
         : type(UNKNOWN), agg(nullptr), width(-1),
-          is_port(false), is_chan(false), is_array(false) {}
+          is_port(false), is_chan(false), is_array(false),
+          array_size(-1) {}
 
     explicit InferredType(int width_)
         : type(RESOLVED), agg(nullptr), width(width_),
-          is_port(false), is_chan(false), is_array(false) {}
+          is_port(false), is_chan(false), is_array(false),
+          array_size(-1) {}
 
     // Join two types. Resolves to a concrete type if either input type is
     // concrete or if both are, and are the same, or "top" if neither is known,

@@ -111,8 +111,35 @@ CodeGenPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
         ctx_->Bindings().Set(node->lhs->def, node->rhs.get());
     } else if (node->lhs->op == ASTExpr::ARRAY_REF) {
         // Generate an array-write IR stmt.
-        // TODO.
-        assert(false);
+        // The first op must be a direct var reference to an array -- arrays
+        // nested in other lvalues (other arrays or fields of aggregate types,
+        // for example) are not supported.
+        if (node->lhs->ops[0]->op != ASTExpr::VAR) {
+            Error(node.get(),
+                    "Cannot assign to array nested in another value.");
+            return VISIT_END;
+        }
+        if (node->lhs->ops[0]->def->rhs->op != ASTExpr::ARRAY_INIT) {
+            Error(node.get(),
+                    "Cannot assign to non-array value with array ref.");
+            return VISIT_END;
+        }
+        ASTExpr* arraydef = node->lhs->ops[0]->def->rhs.get();
+
+        unique_ptr<IRStmt> array_write(new IRStmt());
+        array_write->valnum = ctx_->Valnum();
+        array_write->type = IRStmtArrayWrite;
+        array_write->width = node->rhs->inferred_type.width;
+        array_write->port_name = arraydef->ident->name;
+
+        IRStmt* index_arg = ctx_->GetIRStmt(node->lhs->ops[1].get());
+        IRStmt* value = ctx_->GetIRStmt(node->rhs.get());
+        array_write->args.push_back(index_arg);
+        array_write->arg_nums.push_back(index_arg->valnum);
+        array_write->args.push_back(value);
+        array_write->arg_nums.push_back(value->valnum);
+
+        ctx_->AddIRStmt(ctx_->CurBB(), move(array_write));
     } else if (node->lhs->op == ASTExpr::FIELD_REF) {
         // This should have been desugared by the type-lower pass to (i)
         // constructing the new aggregate value in a temporary and (ii)
@@ -391,6 +418,47 @@ CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 read_stmt->port_name = portdef->ident->name;
                 read_stmt->width = portdef->inferred_type.width;
                 ctx_->AddIRStmt(ctx_->CurBB(), move(read_stmt), node.get());
+                break;
+            }
+            case ASTExpr::ARRAY_INIT: {
+                // Generate a name for this array and produce an IR statement
+                // to define its size.
+                node->ident.reset(new ASTIdent());
+                node->ident->name = ctx_->GenSym("array");
+
+                unique_ptr<IRStmt> array_def(new IRStmt());
+                array_def->valnum = ctx_->Valnum();
+                array_def->type = IRStmtArraySize;
+                array_def->port_name = node->ident->name;
+                array_def->constant = node->inferred_type.array_size;
+                ctx_->AddIRStmt(ctx_->CurBB(), move(array_def), node.get());
+                break;
+            }
+            case ASTExpr::ARRAY_REF: {
+                if (node->ops[0]->op != ASTExpr::VAR) {
+                    Error(node.get(),
+                            "Array read from something other than variable ref");
+                    return VISIT_END;
+                }
+
+                ASTExpr* arraydef = node->ops[0]->def->rhs.get();
+                if (arraydef->op != ASTExpr::ARRAY_INIT) {
+                    Error(node.get(),
+                            "Array read from something other than array");
+                    return VISIT_END;
+                }
+
+                unique_ptr<IRStmt> array_read(new IRStmt());
+                array_read->valnum = ctx_->Valnum();
+                array_read->type = IRStmtArrayRead;
+                array_read->width = node->inferred_type.width;
+
+                IRStmt* index_arg = ctx_->GetIRStmt(node->ops[1].get());
+                array_read->args.push_back(index_arg);
+                array_read->arg_nums.push_back(index_arg->valnum);
+                array_read->port_name = arraydef->ident->name;
+
+                ctx_->AddIRStmt(ctx_->CurBB(), move(array_read), node.get());
                 break;
             }
             case ASTExpr::STMTBLOCK: {

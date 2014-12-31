@@ -101,7 +101,8 @@ bool GetStorageMap(IRProgram* program,
     for (auto& bb : program->bbs) {
         for (auto& stmt : bb->stmts) {
             if (!IRReadsStorage(stmt->type) &&
-                !IRWritesStorage(stmt->type)) continue;
+                !IRWritesStorage(stmt->type) &&
+                stmt->type != IRStmtArraySize) continue;
             if (stmt->port_name == "") {
                 collector->ReportError(stmt->location, ErrorCollector::ERROR,
                         "Empty storage name");
@@ -200,6 +201,9 @@ bool CreateStorage(IRProgram* program,
             }
             if (IRReadsStorage(stmt->type)) {
                 storage->readers.push_back(stmt);
+            }
+            if (stmt->type == IRStmtArraySize) {
+                storage->elements = static_cast<int>(stmt->constant);
             }
         }
         program->storage.push_back(move(storage));

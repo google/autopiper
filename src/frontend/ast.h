@@ -291,6 +291,8 @@ struct ASTExpr : public ASTBase {
         AGGLITERAL,
         AGGLITERALFIELD,
 
+        ARRAY_INIT,
+
         FUNCCALL,
 
         PORTREAD,

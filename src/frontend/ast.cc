@@ -318,6 +318,7 @@ AST_PRINTER(ASTExpr) {
         T(CONST);
         T(FIELD_REF);
         T(ARRAY_REF);
+        T(ARRAY_INIT);
         T(ARG);
         T(AGGLITERAL);
         T(AGGLITERALFIELD);

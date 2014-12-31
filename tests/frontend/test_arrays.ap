@@ -1,0 +1,11 @@
+func entry main() : void {
+    let arr1 : int32[64] = array;
+    let arr2 : bool[40] = array;
+
+    let index : int32 = 0x21;
+
+    arr1[index[5:0]] = 42;
+    index = arr1[index[5:0]];
+    arr2[1] = 0;
+    arr2[index[5:0]] = 1;
+}

@@ -59,8 +59,12 @@ void VerilogGenerator::Generate() {
     out_->SetVar("module_name", name_);
 
     GenerateModuleStart();
-    // Generate node implementations first. In the process, we learn which
-    // signals need to be staged to which pipestages.
+    // Generate storage elements: registers and arrays.
+    for (auto& s : program_->storage) {
+        GenerateStorage(s.get());
+    }
+    // Generate node implementations. In the process, we learn which signals
+    // need to be staged to which pipestages.
     for (auto* sys : systems_) {
         for (auto& pipe : sys->pipes) {
             for (auto& stmt : pipe->stmts) {
@@ -72,10 +76,6 @@ void VerilogGenerator::Generate() {
     for (auto& p : signal_stages_) {
         const auto* signal = p.first;
         GenerateStaging(signal);
-    }
-    // Generate storage elements: registers and arrays.
-    for (auto& s : program_->storage) {
-        GenerateStorage(s.get());
     }
     GenerateModuleEnd();
 }
@@ -209,6 +209,9 @@ void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
                 "always @(negedge clock)\n"
                 "    if ($predicate$)\n"
                 "        array_$arrayname$[$index$] <= $data$;\n");
+            break;
+
+        case IRStmtArraySize:
             break;
 
         case IRStmtRestartValue:
@@ -418,7 +421,7 @@ void VerilogGenerator::GenerateStorage(const IRStorage* storage) {
     out_->SetVar("name", storage->name);
     out_->SetVar("width", strprintf("%d", storage->data_width));
     assert(storage->index_width < 64);  // checked during typecheck
-    out_->SetVar("entries", strprintf("%uld", (1UL << storage->index_width)));
+    out_->SetVar("entries", strprintf("%d", storage->elements));
 
     if (storage->index_width == 0) {  // individual register
         out_->Print("reg [$width$-1:0] reg_$name$;\n");

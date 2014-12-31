@@ -781,6 +781,12 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             return ret;
         }
 
+        if (ident == "array") {
+            Consume();
+            ret->op = ASTExpr::ARRAY_INIT;
+            return ret;
+        }
+
         // Otherwise, it's a variable reference.
         ret->op = ASTExpr::VAR;
         if (!ParseIdent(ret->ident.get())) {

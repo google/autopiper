@@ -146,6 +146,14 @@ class TypeInferPass : public ASTVisitorContext {
         // modifier.
         void ConveyPort(InferenceNode* port_node, InferenceNode* value_node);
 
+        // Connect an array value, the extracted array slot, and the index used
+        // to extract it.
+        void ConveyArrayRef(InferenceNode* n, InferenceNode* array,
+                InferenceNode* index);
+
+        // Ensure that a type is an array.
+        void EnsureArray(InferenceNode* n);
+
         // Once the pass has run over the AST to collect all type slots and
         // build the inference graph, this function solves the inference graph
         // to arrive at concrete types. It then labels all expression and

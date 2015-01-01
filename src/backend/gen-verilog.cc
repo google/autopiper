@@ -415,6 +415,7 @@ void VerilogGenerator::GenerateStaging(const IRStmt* stmt) {
                     "  .hold($hold$),\n"
                     "  .clock(clock),\n"
                     "  .reset(reset));\n");
+        out_->Print("wire [$width$-1:0] $dst$;\n");
     }
 }
 

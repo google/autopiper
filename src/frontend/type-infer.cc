@@ -323,6 +323,35 @@ void TypeInferPass::ConveyAggLiteral(InferenceNode* n, ASTExpr* expr) {
     }
 }
 
+bool TypeInferPass::HandleCast(
+        InferenceNode* n, InferenceNode* arg,
+        const ASTType* ty) {
+
+    InferredType cast_type = aggs_->ResolveType(ty);
+    if (cast_type.is_reg || cast_type.is_array ||
+        cast_type.is_port || cast_type.is_chan) {
+        Error(ty, "Invalid cast: cannot cast storage or port/chan types");
+        return false;
+    }
+
+    EnsureSimple(arg);
+    ConveyConstType(n, cast_type);
+
+    Location loc = ty->loc;
+    arg->validators_.push_back(
+            [cast_type, loc]
+            (InferredType type, ErrorCollector* coll) {
+                if (cast_type.width != type.width) {
+                    coll->ReportError(loc, ErrorCollector::ERROR,
+                            "Invalid cast: widths must be equal");
+                    return false;
+                }
+                return true;
+            });
+
+    return true;
+}
+
 TypeInferPass::Result
 TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
     aggs_.reset(new AggTypeResolver(node.get()));
@@ -494,6 +523,12 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
 
         case ASTExpr::AGGLITERALFIELD:
             // Handled by AGGLITERAL above.
+            break;
+
+        case ASTExpr::CAST:
+            if (!HandleCast(n, arg_types[0], node->cast_type.get())) {
+                return VISIT_END;
+            }
             break;
 
         default:

@@ -1,0 +1,25 @@
+type MyType {
+    field1 : int32;
+    field2 : int64;
+    field3 : SubType;
+    field4 : int8;
+}
+
+type SubType {
+    a : int32;
+    b : int32;
+}
+
+func entry main() : void {
+    let x : MyType = [
+        field1 = 0xdeadbeef,
+        field2 = 0xfedcba9876543210,
+        field3 = [ a = 1, b = 2 ],
+        field4 = 0xff
+    ];
+
+    let p : port int_168 = port;
+
+    write p, cast int_168 x;
+    x = cast MyType (read p);
+}

@@ -557,6 +557,15 @@ CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                         node.get());
                 break;
             }
+            case ASTExpr::CAST:
+                // Nothing -- just associate the IR value of the casted-from
+                // expression to the casted-to expression as well. Widths must
+                // always match during casting so we never need any computation
+                // to implement a cast.
+                ctx_->AddIRStmt(
+                        ctx_->GetIRStmt(node->ops[0].get()),
+                        node.get());
+                break;
             default:
                 Error(node.get(),
                         strprintf("Unsupported node type: %d", node->op));

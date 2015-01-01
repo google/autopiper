@@ -306,6 +306,8 @@ struct ASTExpr : public ASTBase {
 
         STMTBLOCK,  // must end in an ASTStmtExpr
 
+        CAST,
+
         // NOP at AST level: used only to map to IR stmt values during codegen.
         NOP,
     };
@@ -321,6 +323,8 @@ struct ASTExpr : public ASTBase {
     InferredType inferred_type;
 
     ASTRef<ASTStmtBlock> stmt;
+
+    ASTRef<ASTType> cast_type;
 
     ASTExpr() : op(CONST), def(nullptr)  {}
     ASTExpr(ASTBignum constant_)

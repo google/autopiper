@@ -344,6 +344,8 @@ AST_PRINTER(ASTExpr) {
 
         T(STMTBLOCK);
 
+        T(CAST);
+
         T(NOP);
 #undef T
     }
@@ -366,6 +368,11 @@ AST_PRINTER(ASTExpr) {
     if (node->stmt) {
         out << I(1) << "(stmt" << endl;
         P(node->stmt.get(), 2);
+        out << I(1) << ")" << endl;
+    }
+    if (node->cast_type) {
+        out << I(1) << "(cast-type" << endl;
+        P(node->cast_type.get(), 2);
         out << I(1) << ")" << endl;
     }
     if (node->inferred_type.type == InferredType::RESOLVED ||
@@ -598,6 +605,8 @@ AST_CLONE(ASTExpr) {
     PRIM(constant);
     PRIM(def);
     PRIM(inferred_type);
+    SUB(stmt);
+    SUB(cast_type);
     return ret;
 }
 

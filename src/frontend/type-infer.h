@@ -169,6 +169,12 @@ class TypeInferPass : public ASTVisitorContext {
         // value expressions.
         void ConveyAggLiteral(InferenceNode* n, ASTExpr* expr);
 
+        // Set up a validator to ensure cast is valid, and convey the
+        // casted-to type to the result node.
+        bool HandleCast(
+                InferenceNode* n, InferenceNode* arg,
+                const ASTType* ty);
+
         // Once the pass has run over the AST to collect all type slots and
         // build the inference graph, this function solves the inference graph
         // to arrive at concrete types. It then labels all expression and

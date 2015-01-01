@@ -188,8 +188,8 @@ InferredType AggTypeResolver::ResolveType(const ASTType* type) {
 
 #undef PRIM
 
-        // Support "int.5678" syntax.
-        if (type->ident->name.substr(0, 4) == "int.") {
+        // Support "int_5678" syntax.
+        if (type->ident->name.substr(0, 4) == "int_") {
             istringstream is(type->ident->name.substr(4));
             ret.type = InferredType::RESOLVED;
             ret.agg = NULL;

@@ -822,6 +822,21 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             }
         }
 
+        if (ident == "cast") {
+            Consume();
+            ret->op = ASTExpr::CAST;
+            ret->cast_type.reset(new ASTType());
+            if (!ParseType(ret->cast_type.get())) {
+                return astnull<ASTExpr>();
+            }
+            ASTRef<ASTExpr> arg = ParseExpr();
+            if (!arg) {
+                return astnull<ASTExpr>();
+            }
+            ret->ops.push_back(move(arg));
+            return ret;
+        }
+
         // Otherwise, it's a variable reference.
         ret->op = ASTExpr::VAR;
         if (!ParseIdent(ret->ident.get())) {

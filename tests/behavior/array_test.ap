@@ -25,6 +25,12 @@ type data_t int32;
 type index_t int16;
 type arr_t data_t[65536];
 
+func DoCmd(
+        cmd : int_2,
+        addr : index_t,
+        data : data_t) : data_t {
+}
+
 func entry main() : void {
     let storage : arr_t = array;
     let index_in : port index_t = port "index_in";
@@ -34,20 +40,20 @@ func entry main() : void {
 
     timing {
         stage 0;
+
         let cmd = read cmd_in;
-        let result_chan : chan data_t = chan;
+        let addr = read index_in;
+        let data = read data_in;
 
         if (cmd == 1) {
-            spawn {
-                let data = storage[read index_in];
-                write result_chan, data;
-            }
-        } else {
-            storage[read index_in] = read data_in;
+            storage[addr] = data;
+            data = 0;
+        } else if (cmd == 2) {
+            data = storage[addr];
         }
 
         stage 1;
-        let d = read result_chan;
-        write data_out, d;
+
+        write data_out, data;
     }
 }

@@ -361,7 +361,7 @@ TypeInferPass::ModifyASTPre(ASTRef<AST>& node) {
 static int BignumLog2(ASTBignum num) {
     int bits = 0;
     if (num == 0) {
-        return 1;
+        return 0;
     }
     while (num != 0) {
         bits++;

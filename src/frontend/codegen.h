@@ -286,7 +286,10 @@ class CodeGenPass : public ASTVisitorContext {
     private:
         CodeGenContext* ctx_;
 
-        const ASTExpr* FindPortDef(const ASTExpr* node, const ASTExpr* orig);
+        const ASTExpr* FindEntityDef(
+                const ASTExpr* node,
+                ASTExpr::Op def_type,
+                const ASTExpr* orig);
 
         struct LoopFrame {
             ASTStmtWhile* while_block;

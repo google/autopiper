@@ -1,0 +1,23 @@
+#test: port data_out 32
+
+#test: cycle 1
+#test: expect data_out 24
+
+type data_t int32;
+type index_t int16;
+type arr_t data_t[65536];
+
+func SetArray(arr : arr_t) : void {
+    arr[32] = 24;
+}
+
+func GetArray(arr : arr_t) : data_t {
+    return arr[32];
+}
+
+func entry main() : void {
+    let storage : arr_t = array;
+    let data_out : port data_t = port "data_out";
+    SetArray(storage);
+    write data_out, GetArray(storage);
+}

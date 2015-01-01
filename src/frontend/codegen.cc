@@ -128,17 +128,11 @@ CodeGenPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
         ctx_->Bindings().Set(node->lhs->def, node->rhs.get());
     } else if (node->lhs->op == ASTExpr::REG_REF) {
         // Reg write.
-        if (node->lhs->ops[0]->op != ASTExpr::VAR) {
-            Error(node.get(),
-                    "Cannot assign to reg nested in another value.");
+        const ASTExpr* regdef = FindEntityDef(
+                node->lhs->ops[0].get(), ASTExpr::REG_INIT, node->lhs.get());
+        if (!regdef) {
             return VISIT_END;
         }
-        if (node->lhs->ops[0]->def->rhs->op != ASTExpr::REG_INIT) {
-            Error(node.get(),
-                    "Reg assignment to a non-reg value.");
-            return VISIT_END;
-        }
-        ASTExpr* regdef = node->lhs->ops[0]->def->rhs.get();
 
         unique_ptr<IRStmt> reg_write(new IRStmt());
         reg_write->valnum = ctx_->Valnum();
@@ -156,17 +150,12 @@ CodeGenPass::ModifyASTStmtAssignPost(ASTRef<ASTStmtAssign>& node) {
         // The first op must be a direct var reference to an array -- arrays
         // nested in other lvalues (other arrays or fields of aggregate types,
         // for example) are not supported.
-        if (node->lhs->ops[0]->op != ASTExpr::VAR) {
-            Error(node.get(),
-                    "Cannot assign to array nested in another value.");
+        const ASTExpr* arraydef = FindEntityDef(
+                node->lhs->ops[0].get(),
+                ASTExpr::ARRAY_INIT, node->lhs.get());
+        if (!arraydef) {
             return VISIT_END;
         }
-        if (node->lhs->ops[0]->def->rhs->op != ASTExpr::ARRAY_INIT) {
-            Error(node.get(),
-                    "Cannot assign to non-array value with array ref.");
-            return VISIT_END;
-        }
-        ASTExpr* arraydef = node->lhs->ops[0]->def->rhs.get();
 
         unique_ptr<IRStmt> array_write(new IRStmt());
         array_write->valnum = ctx_->Valnum();
@@ -208,7 +197,8 @@ CodeGenPass::Result
 CodeGenPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
     unique_ptr<IRStmt> write_stmt(new IRStmt());
     write_stmt->valnum = ctx_->Valnum();
-    const ASTExpr* portdef = FindPortDef(node->port.get(), node->port.get());
+    const ASTExpr* portdef = FindEntityDef(
+            node->port.get(), ASTExpr::PORTDEF, node->port.get());
     if (!portdef) {
         return VISIT_END;
     }
@@ -393,19 +383,19 @@ static IRStmtOp ExprTypeToOpType(ASTExpr::Op op) {
     }
 }
 
-const ASTExpr* CodeGenPass::FindPortDef(
+const ASTExpr* CodeGenPass::FindEntityDef(
         const ASTExpr* node,
+        ASTExpr::Op def_type,
         const ASTExpr* orig) {
-    if (node->op == ASTExpr::PORTDEF) {
+    if (node->op == def_type) {
         return node;
     } else if (node->op == ASTExpr::VAR) {
         const ASTExpr* binding = ctx_->Bindings()[node->def];
-        return FindPortDef(binding, orig);
+        return FindEntityDef(binding, def_type, orig);
     } else {
         Error(orig,
-                "Port value expected but cannot trace back to a port "
+                "Port/array/reg value expected but cannot trace back to "
                 "def statically.");
-        assert(false);
         return nullptr;
     }
 }
@@ -475,8 +465,8 @@ CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
             case ASTExpr::PORTREAD: {
                 // Get the eventual port def. We trace through VAR->lets but
                 // don't support any other static analysis here.
-                const ASTExpr* portdef = FindPortDef(
-                        node->ops[0].get(), node.get());
+                const ASTExpr* portdef = FindEntityDef(
+                        node->ops[0].get(), ASTExpr::PORTDEF, node.get());
                 if (!portdef) {
                     return VISIT_END;
                 }
@@ -508,20 +498,13 @@ CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 array_def->type = IRStmtArraySize;
                 array_def->port_name = node->ident->name;
                 array_def->constant = node->inferred_type.array_size;
-                ctx_->AddIRStmt(ctx_->CurBB(), move(array_def), node.get());
+                ctx_->AddIRStmt(ctx_->CurBB(), move(array_def));
                 break;
             }
             case ASTExpr::ARRAY_REF: {
-                if (node->ops[0]->op != ASTExpr::VAR) {
-                    Error(node.get(),
-                            "Array read from something other than variable ref");
-                    return VISIT_END;
-                }
-
-                ASTExpr* arraydef = node->ops[0]->def->rhs.get();
-                if (arraydef->op != ASTExpr::ARRAY_INIT) {
-                    Error(node.get(),
-                            "Array read from something other than array");
+                const ASTExpr* arraydef = FindEntityDef(
+                        node->ops[0].get(), ASTExpr::ARRAY_INIT, node.get());
+                if (!arraydef) {
                     return VISIT_END;
                 }
 
@@ -545,16 +528,9 @@ CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 break;
             }
             case ASTExpr::REG_REF: {
-                if (node->ops[0]->op != ASTExpr::VAR) {
-                    Error(node.get(),
-                            "Reg read from something other than variable ref");
-                    return VISIT_END;
-                }
-
-                ASTExpr* regdef = node->ops[0]->def->rhs.get();
-                if (regdef->op != ASTExpr::REG_INIT) {
-                    Error(node.get(),
-                            "Reg read from something other than reg");
+                const ASTExpr* regdef = FindEntityDef(
+                        node->ops[0].get(), ASTExpr::REG_INIT, node.get());
+                if (!regdef) {
                     return VISIT_END;
                 }
 

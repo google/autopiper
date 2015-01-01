@@ -116,6 +116,11 @@ void VerilogGenerator::GenerateModuleEnd() {
 
 void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
     PrinterScope scope(out_);
+    // Special case: eliminate zero-width data ops, as they're the result of
+    // 'void' functions and need not be materialized.
+    if (stmt->type == IRStmtExpr && stmt->width == 0) {
+        return;
+    }
     // Materialize all inputs.
     vector<string> arg_signals;
     for (auto* arg : stmt->args) {

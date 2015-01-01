@@ -1,0 +1,53 @@
+#test: port index_in 16
+#test: port data_in 32
+#test: port cmd_in 2
+#test: port data_out 32
+
+#test: cycle 1
+#test: write index_in 1234
+#test: write data_in 0xffffffff
+#test: write cmd_in 1
+#test: expect data_out 0
+
+#test: cycle 2
+#test: write index_in 1234
+#test: write data_in 0
+#test: write cmd_in 2
+#test: expect data_out 0
+
+#test: cycle 3
+#test: write index_in 0
+#test: write data_in 0
+#test: write cmd_in 0
+#test: expect data_out 0xffffffff
+
+type data_t int32;
+type index_t int16;
+type arr_t data_t[65536];
+
+func entry main() : void {
+    let storage : arr_t = array;
+    let index_in : port index_t = port "index_in";
+    let data_in : port data_t = port "data_in";
+    let cmd_in : port int_2 = port "cmd_in";
+    let data_out : port data_t = port "data_out";
+
+    timing {
+        stage 0;
+        let cmd = read cmd_in;
+        let result_chan : chan data_t = chan;
+
+        if (cmd == 1) {
+            spawn {
+                let data = storage[read index_in];
+                write result_chan, data;
+            }
+        } else {
+            storage[read index_in] = read data_in;
+        }
+
+        stage 1;
+        let d = read result_chan;
+        write data_out, d;
+    }
+}

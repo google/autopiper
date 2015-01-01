@@ -1,5 +1,7 @@
 - end-to-end tests and harness (with specified test-vector inputs and expected
   outputs on stimulus/output ports)
+- Support multiple writers to ports/chans: join with write preemption (by
+  dominance then random priority) and muxing.
 - support for "macros" in C++ (as codegen visitor pass hooks)
 - ask/provide abstraction for bypass (in backend and frontend)
 - transactional state macros (or primitives?)

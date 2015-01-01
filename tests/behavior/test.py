@@ -172,7 +172,7 @@ class TestCase(object):
         stdout, stderr, ret = run(autopiper_bin, [autopiper_bin, '-o', dut_v, self.filename])
         if ret != 0:
             print("Error compiling DUT:")
-            print(stderr)
+            print(stderr.decode('utf-8'))
             return False
 
         self.write_tb(tb_v)
@@ -180,13 +180,13 @@ class TestCase(object):
         stdout, stderr, ret = run("iverilog", ["iverilog", '-o', exe, dut_v, tb_v])
         if ret != 0:
             print("Error compiling DUT and testbench Verilog to test executable:")
-            print(stderr)
+            print(stderr.decode('utf-8'))
             return False
 
         stdout, stderr, ret = run(exe, [exe])
         if ret != 0:
             print("Error running test.")
-            print(stderr)
+            print(stderr.decode('utf-8'))
             return False
         if not stdout.endswith(b'PASSED.\n'):
             print("Test failed:")

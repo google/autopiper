@@ -644,7 +644,7 @@ bool TypeInferPass::Infer(ErrorCollector* coll) {
     if (failed) {
         for (auto& node : nodes_) {
             if (node->type_.type == InferredType::CONFLICT &&
-                already_added.find(node.get()) == already_added.end()) {
+                (true || (already_added.find(node.get()) == already_added.end()))) {
                 coll->ReportError(node->loc, ErrorCollector::ERROR,
                         node->type_.conflict_msg);
                 AddNodeAndDeps(node.get(), &already_added);

@@ -60,6 +60,9 @@ IRStmt* CodeGenContext::AddIRStmt(
     if (expr) {
         expr_to_ir_map_[expr] = stmt.get();
     }
+    if (stmt->valnum >= prog_->next_valnum) {
+        prog_->next_valnum = stmt->valnum + 1;
+    }
     IRStmt* ret = stmt.get();
     bb->stmts.push_back(move(stmt));
     return ret;

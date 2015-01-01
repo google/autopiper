@@ -76,6 +76,9 @@ class VerilogGenerator {
 
   // Helper: deterministic name given a stmt and a stage
   std::string SignalName(const IRStmt* stmt, int stage) const;
+
+  // Generate the pipereg module.
+  void GeneratePipeRegModule();
 };
 
 }  // namespace autopiper

@@ -312,6 +312,7 @@ class CodeGenPass : public ASTVisitorContext {
 
         // (lexical) stack of currently open timing {} blocks.
         std::vector<IRTimeVar*> timing_stack_;
+        std::vector<int> timing_last_stage_;
 };
 
 }  // namespace frontend

@@ -289,6 +289,7 @@ CodeGenPass::ModifyASTStmtTimingPre(ASTRef<ASTStmtTiming>& node) {
     timevar->name = ctx_->GenSym("timing");
     ctx_->ir()->timevar_map[timevar->name] = timevar.get();
     timing_stack_.push_back(timevar.get());
+    timing_last_stage_.push_back(0);
 
     // Create an implicit barrier with offset 0.
     unique_ptr<IRStmt> timing_barrier(new IRStmt());
@@ -305,7 +306,18 @@ CodeGenPass::ModifyASTStmtTimingPre(ASTRef<ASTStmtTiming>& node) {
 
 CodeGenPass::Result
 CodeGenPass::ModifyASTStmtTimingPost(ASTRef<ASTStmtTiming>& node) {
+    // Create an implicit barrier with offset equal to the last stage statement
+    // to ensure the last stage can't leak into later stages.
+    unique_ptr<IRStmt> timing_barrier(new IRStmt());
+    timing_barrier->valnum = ctx_->Valnum();
+    timing_barrier->type = IRStmtTimingBarrier;
+    timing_barrier->timevar = timing_stack_.back();
+    timing_stack_.back()->uses.push_back(timing_barrier.get());
+    timing_barrier->time_offset = timing_last_stage_.back();
+    ctx_->AddIRStmt(ctx_->CurBB(), move(timing_barrier));
+
     timing_stack_.pop_back();
+    timing_last_stage_.pop_back();
     return VISIT_CONTINUE;
 }
 
@@ -319,15 +331,31 @@ CodeGenPass::ModifyASTStmtStagePost(ASTRef<ASTStmtStage>& node) {
         return VISIT_END;
     }
     IRTimeVar* timevar = timing_stack_.back();
+    int& last_stage = timing_last_stage_.back();
 
-    unique_ptr<IRStmt> timing_barrier(new IRStmt());
-    timing_barrier->valnum = ctx_->Valnum();
-    timing_barrier->type = IRStmtTimingBarrier;
-    timing_barrier->timevar = timevar;
-    timevar->uses.push_back(timing_barrier.get());
-    timing_barrier->time_offset = node->offset;
+    // We place (i) a barrier anchored to the *last* stage statement's offset,
+    // to late-constrain all statements before this stage start; and (ii) a
+    // barrier anchored to *this* stage statement's offset, to early-constrain
+    // all statements in this stage.
 
-    ctx_->AddIRStmt(ctx_->CurBB(), move(timing_barrier));
+    unique_ptr<IRStmt> late_timing_barrier(new IRStmt());
+    late_timing_barrier->valnum = ctx_->Valnum();
+    late_timing_barrier->type = IRStmtTimingBarrier;
+    late_timing_barrier->timevar = timevar;
+    timevar->uses.push_back(late_timing_barrier.get());
+    late_timing_barrier->time_offset = last_stage;
+
+    ctx_->AddIRStmt(ctx_->CurBB(), move(late_timing_barrier));
+
+    unique_ptr<IRStmt> early_timing_barrier(new IRStmt());
+    early_timing_barrier->valnum = ctx_->Valnum();
+    early_timing_barrier->type = IRStmtTimingBarrier;
+    early_timing_barrier->timevar = timevar;
+    timevar->uses.push_back(early_timing_barrier.get());
+    early_timing_barrier->time_offset = node->offset;
+    last_stage = node->offset;
+
+    ctx_->AddIRStmt(ctx_->CurBB(), move(early_timing_barrier));
 
     return VISIT_CONTINUE;
 }

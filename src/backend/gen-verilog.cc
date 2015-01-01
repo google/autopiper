@@ -78,6 +78,8 @@ void VerilogGenerator::Generate() {
         GenerateStaging(signal);
     }
     GenerateModuleEnd();
+
+    GeneratePipeRegModule();
 }
 
 void VerilogGenerator::GenerateModuleStart() {
@@ -428,4 +430,32 @@ void VerilogGenerator::GenerateStorage(const IRStorage* storage) {
     } else {  // array
         out_->Print("reg [$width$-1:0] array_$name$[$entries$-1:0];\n");
     }
+}
+
+void VerilogGenerator::GeneratePipeRegModule() {
+    out_->Print(
+        "\n"
+        "module pipereg(\n"
+        "    input [width-1:0] src,\n"
+        "    output [width-1:0] dst,\n"
+        "    input valid,\n"
+        "    input hold,\n"
+        "    input clock,\n"
+        "    input reset);\n"
+        "\n"
+        "    parameter width = 1;\n"
+        "\n"
+        "    reg [width-1:0] dst;\n"
+        "    initial dst <= 0;\n"
+        "\n"
+        "    always @(posedge clock) begin\n"
+        "        if (reset)\n"
+        "            dst <= 0;\n"
+        "        else begin\n"
+        "            if (valid)\n"
+        "                dst <= src;\n"
+        "        end\n"
+        "    end\n"
+        "\n"
+        "endmodule\n");
 }

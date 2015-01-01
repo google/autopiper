@@ -1,0 +1,22 @@
+#test: port test_in 32
+#test: port test_out 32
+#test: cycle 0
+#test: write test_in 42
+#test: cycle 1
+#test: write test_in 44
+#test: expect test_out 42
+#test: cycle 2
+#test: write test_in 0
+#test: expect test_out 44
+
+func entry main() : void {
+    let test_in : port int32 = port "test_in";
+    let test_out : port int32 = port "test_out";
+
+    timing {
+        stage 0;
+        let x = read test_in;
+        stage 1;
+        write test_out, x;
+    }
+}

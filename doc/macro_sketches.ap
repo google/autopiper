@@ -1,0 +1,140 @@
+macro! txn {
+    (name, type, initial) = (
+        let _ $$ $name $$ _reg : reg $type = reg;
+        let _ $$ $name $$ _value = _ $$ $name $$ _value;
+        let _ $$ $name $$ _bypass : bypass $type = bypass;
+
+        onkill { _ $$ $name $$ _reg = $initial; }
+        ondone { _ $$ $name $$ _reg = _ $$ $name $$ _value; }
+    )
+}
+macro! txnprepare {
+    (name) = (
+        prepare _ $$ $name $$ _bypass;
+    )
+}
+macro! txnwrite {
+    (name, value) = (
+        _ $$ $name $$ _value = $value;
+        provide _ $$ $name $$ _bypass, $value;
+    )
+}
+macro! txnread {
+    (name) = (
+        expr {
+            let $_byp = ask _ $$ $name $$ _bypass;
+            let $_val = 0;
+            if ($_byp) {
+                $_val = askvalue _ $$ $name $$ _bypass;
+            } else {
+                $_val = _ $$ $name $$ _value;
+            }
+            $_val;
+        }
+    )
+}
+
+macro! queue {
+    (size, [*vardecls], body) = (
+
+        timing {
+            txn!($_writepointer, int32, 0);
+            txn($_write_watermark, int32, $size - 1);
+            let $_creditsend : port bool = port;
+            let $_creditreturn : port bool = port;
+            let $_beflush : port bool = port;
+            let $_feflush : port bool = port;
+            while (txnread!($_writepointer) == txnread!($_write_watermark)) 0;
+            let $_writepoint = txnread!($_writepointer);
+            queue_declare_arrays!($vardecls);
+            queue_write_arrays!($_writepoint, $vardecls);
+            write $_creditsend, 1;
+            queue_inc!($_writepointer, $size);
+
+            let $_id : int32 = $_idcounter;
+
+            func entry $_backend() : void {
+                valid_if ...
+            }
+
+            func entry $_recvcredits() : void {
+                if ($_creditreturn)
+                    queue_inc!($_watermark, 1);
+            }
+
+            onkillyounger {
+                write $_beflush, $_id;
+            }
+        }
+
+    )
+}
+
+macro! queue_inc {
+    (var, size) = ($var = ($var + 1) & ($size - 1);)
+}
+
+###############################################################
+### concrete expansion example (rework above to match this) ###
+###############################################################
+
+func entry main() : void {
+    let x : int32 = 0;
+    let y = DoWork(x);
+    queue!(16, [x, int32, y, int32], {
+        while (!BackendReady()) 0;
+        Backend(x, y);
+    });
+}
+
+# should expand to:
+
+func entry main2() : void {
+    let x : int32 = 0;
+    let y = DoWork(x);
+
+    let __temp_writepointer : txn int32 = txn 0;
+    let __temp_watermark : txn int32 = txn 15;
+    let __temp_creditsend : port bool = port;
+    let __temp_creditreturn : port bool = port;
+    let __temp_beflush : port bool = port;
+    let __temp_feflush : port bool = port;
+    let __temp_queue_x : int32[16] = array;
+    let __temp_queue_y : int32[16] = array;
+    while (__temp_writepointer == __temp_watermark) 0;
+    __temp_queue_x[__temp_writepointer] = x;
+    __temp_queue_y[__temp_writepointer] = y;
+    __temp_writepointer = __temp_writepointer + 1;
+    write __temp_creditsend, 1;
+
+    onkill write __temp_feflush, 1;
+    killif __temp_beflush == 1;
+
+    func entry __temp_creditreturn() : void {
+        if (__temp_creditreturn == 1) {
+            __temp_watermark = __temp_watermark + 1;
+        }
+    }
+
+    func entry __temp_backend() : void {
+        let __temp_watermark : txn int32 = txn 0;
+        let __temp_readpointer : txn int32 = txn 0;
+        while (__temp_watermark == __temp_readpointer) 0;
+        let x : int32 = __temp_queue_x[__temp_readpointer];
+        let y : int32 = __temp_queue_y[__temp_readpointer];
+        write __temp_creditreturn, 1;
+
+        onkill write __temp_beflush, 1;
+        killif __temp_feflush == 1;
+
+        # body:
+        while (!BackendReady()) 0;
+        Backend(x, y);
+
+        func entry __temp_creditsend() : void {
+            if (__temp_creditsend == 1) {
+                __temp_watermark = __temp_watermark + 1;
+            }
+        }
+    }
+}

@@ -1,14 +1,28 @@
-- end-to-end tests and harness (with specified test-vector inputs and expected
-  outputs on stimulus/output ports)
-- Support multiple writers to ports/chans: join with write preemption (by
-  dominance then random priority) and muxing.
-- support for "macros" in C++ (as codegen visitor pass hooks)
-- ask/provide abstraction for bypass (in backend and frontend)
-- transactional state macros (or primitives?)
-- proper lexical scope and non-hacky function inlining
-- conditional/blocking port hooks
+- Macro expander
+- Bypass values
+  - prepare, provide, unprovide, ask, askvalue (with index match)
+- ondone blocks (like onkill) and support in backend
+  - ondone and onkill are codegen'd only once. The kill block is jumped to by
+    all kill points. The done block is placed at the end of the 'main spur'.
+- onkillyounger and support in the backend
+  - codegen'd only once; jumped to by all killyounger points.
+- Multiple-writer semantics
+  - all writes to a port, chan, reg must be in the same timing stage
+  - arbitration is by an arbitrary order (well-defined results only when all
+    writes are mutually exclusive)
+    - TODO: How does this interact with onkill/ondone? These should take higher
+      priority in general, and be exempt from 'same stage'.
+  - writes to an array are slightly different: each write implies a separate
+    write port.
+- STMTBLOCK exprs via 'expr { ... }'.
+- support for defining new toplevels inside other funcs, while getting access
+  to arrays/ports (with dynamic scope)
+  - new statement type: anonymous func. Codegen must use same context, stash
+    away CurBB and start a new one.
+
 
 OoO-decomposed-as-macros:
+- transactional state macros (or primitives?)
 - queue! macro
 - superscalar primitive? (alters the pipelining transform)
   - this needs to interact with the transactional-state primitives, produces a
@@ -28,8 +42,8 @@ OoO-decomposed-as-macros:
   (a standard OoO backend is scoreboard scheduling composed with renaming)
 
 Far-off goals:
-- support for macros in some other language (Lua? Figure out a way to wrap the
-  codegen API and the AST-with-pass-annotations nicely)
+- proper lexical scope and non-hacky function inlining
 - rework the AST as either protobufs or (maybe) something more
   custom/lighter-weight with explicit visitor support
 - rewrite the whole thing now that I understand the problem space better
+  (leading candidate: Haskell DSL -- the Autopiper monad)

@@ -20,6 +20,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <map>
 
 #include "frontend/ast.h"
 #include "common/parser-utils.h"
@@ -102,6 +103,8 @@ class Parser : public ParserBase {
             ExprGroupParser this_level,
             ExprGroupParser next_level>
         bool ParseLeftAssocBinopsRHS(ASTExpr* expr);
+
+        std::map<std::string, ASTBignum> consts_;
 };
 
 }  // namespace frontend

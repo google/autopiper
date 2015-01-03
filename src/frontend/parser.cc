@@ -80,6 +80,25 @@ bool Parser::Parse(AST* ast) {
             if (!Consume(Token::SEMICOLON)) {
                 return false;
             }
+        } else if (CurToken().s == "const") {
+            Consume();
+            if (!Expect(Token::IDENT)) {
+                return false;
+            }
+            string const_name = CurToken().s;
+            Consume();
+            if (!Consume(Token::EQUALS)) {
+                return false;
+            }
+            if (!Expect(Token::INT_LITERAL)) {
+                return false;
+            }
+            ASTBignum value = CurToken().int_literal;
+            Consume();
+            if (!Consume(Token::SEMICOLON)) {
+                return false;
+            }
+            consts_[const_name] = value;
         } else {
             Error("Expected 'type', 'func' or 'pragma' keyword.");
             return false;
@@ -834,6 +853,13 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
                 return astnull<ASTExpr>();
             }
             ret->ops.push_back(move(arg));
+            return ret;
+        }
+
+        if (consts_.find(ident) != consts_.end()) {
+            Consume();
+            ret->op = ASTExpr::CONST;
+            ret->constant = consts_[ident];
             return ret;
         }
 

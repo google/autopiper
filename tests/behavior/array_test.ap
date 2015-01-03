@@ -25,6 +25,9 @@ type data_t int32;
 type index_t int16;
 type arr_t data_t[65536];
 
+const CmdRead = 1;
+const CmdWrite = 2;
+
 func DoCmd(
         cmd : int_2,
         addr : index_t,
@@ -45,10 +48,10 @@ func entry main() : void {
         let addr = read index_in;
         let data = read data_in;
 
-        if (cmd == 1) {
+        if (cmd == CmdRead) {
             storage[addr] = data;
             data = 0;
-        } else if (cmd == 2) {
+        } else if (cmd == CmdWrite) {
             data = storage[addr];
         }
 

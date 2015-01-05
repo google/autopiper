@@ -1,0 +1,44 @@
+let port_a : port int32 = port "a" ;
+let port_b : port int32 = port "b" ;
+let port_c : port int32 = port "c" ;
+write port_a , x ;
+write port_b , y ;
+write port_c , z ;
+let port_a : port int32 = port "a" ;
+let port_b : port int32 = port "b" ;
+write port_a , x ;
+write port_b , y ;
+let port_a : port int32 = port "a" ;
+write port_a , x ;
+empty ( ) ;
+let port_x : port int32 = port ;
+write port_x , x ;
+let port_y : port int32 = port ;
+write port_y , y ;
+let port_z : port int32 = port ;
+write port_z , z ;
+let port_x : port int32 = port ;
+write port_x , x ;
+let port_y : port int32 = port ;
+write port_y , y ;
+let port_x : port int32 = port ;
+write port_x , x ;
+let port_x : port int32 = port ;
+write port_x , x ;
+let port_y : port int32 = port ;
+write port_y , y ;
+let port_z : port int32 = port ;
+write port_z , z ;
+p = q ;
+let port_x : port int32 = port ;
+write port_x , x ;
+p = q ;
+p = q ;
+let __macro__temp__0 = x ;
+let __macro__temp__1 = ( complex_arg + expr {
+x + y ( z ) }
+) ;
+x = x + __macro__temp__1 ;
+onkill {
+x = __macro__temp__0 ;
+}

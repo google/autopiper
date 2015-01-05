@@ -1,0 +1,76 @@
+# test multiple-arm matching and basic arg subst.
+
+macro! mac1 {
+    (a, b, c) = (
+        let port_a : port int32 = port "a";
+        let port_b : port int32 = port "b";
+        let port_c : port int32 = port "c";
+        write port_a, $a;
+        write port_b, $b;
+        write port_c, $c;
+    ),
+
+    (a, b) = (
+        let port_a : port int32 = port "a";
+        let port_b : port int32 = port "b";
+        write port_a, $a;
+        write port_b, $b;
+    ),
+
+    (a) = (
+        let port_a : port int32 = port "a";
+        write port_a, $a;
+    ),
+
+    () = (
+        empty();
+    )
+}
+
+mac1!(x, y, z)
+mac1!(x, y)
+mac1!(x)
+mac1!()
+
+# test *rest functionality, identifier concatenation, and macro recursion.
+
+macro! mac2 {
+    (a, *rest) = (
+        let port_ $$ $a : port int32 = port;
+        write port_ $$ $a, $a;
+        mac2!($rest)
+    ),
+
+    () = ()
+}
+
+mac2!(x, y, z)
+mac2!(x, y)
+mac2!(x)
+mac2!()
+
+# test sublist functionality
+
+macro! mac3 {
+    ([*rest], b, c) = (
+        mac2!($rest)
+        $b = $c;
+    )
+}
+
+mac3!([x, y, z], p, q)
+mac3!([x], p, q)
+mac3!([], p, q)
+
+# test temps and complex (nested-matched-delimeter) args.
+
+macro! mac4 {
+    (a, b) = (
+        let $_temp1 = $a;
+        let $_temp2 = $b;
+        $a = $a + $_temp2;
+        onkill { $a = $_temp1; }
+    )
+}
+
+mac4!(x, (complex_arg + expr { x + y(z) }))

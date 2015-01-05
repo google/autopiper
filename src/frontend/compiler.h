@@ -31,6 +31,9 @@ class Compiler : public boost::noncopyable {
         ~Compiler() { }
 
         struct Options {
+            // Print macro-expanded source and exit.
+            bool expand_macros;
+
             // Print AST after parsing.
             bool print_ast_orig;
 
@@ -57,7 +60,8 @@ class Compiler : public boost::noncopyable {
             std::string output;
 
             Options()
-                : print_ast_orig(false)
+                : expand_macros(false)
+                , print_ast_orig(false)
                 , print_ast(false)
                 , print_ir(false)
                 , print_backend_ir(false)

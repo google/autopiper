@@ -331,7 +331,7 @@ bool Parser::ParseIRStmtTimingAnchor(IRProgram* program, IRStmt* stmt) {
 unique_ptr<IRProgram> IRProgram::Parse(const std::string& filename,
                                        std::istream* in,
                                        ErrorCollector* collector) {
-    Lexer lex(in);
+    LexerImpl lex(in);
     Parser parse(filename, &lex, collector);
 
     unique_ptr<IRProgram> ptr(new IRProgram);

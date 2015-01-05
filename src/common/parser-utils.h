@@ -165,6 +165,7 @@ struct Token {
 
         NEWLINE,
         EOFTOKEN,
+        LEXERERROR,
     } type;
 
     typedef boost::multiprecision::mpz_int bignum;
@@ -189,7 +190,10 @@ struct Token {
         int_literal = 0;
         s = "";
     }
-    std::string ToString() {
+
+    // ToString() returns a human-readable representation of the token data
+    // structure, not the original source text token.
+    std::string ToString() const {
 #define S(x) \
         case x: return #x
 
@@ -248,37 +252,129 @@ struct Token {
         }
 #undef S
     }
+
+    // ToSource() returns the originala source text that parses to this token.
+    std::string ToSource() const {
+        std::string ret;
+        switch (type) {
+#define P(type, s) \
+            case type: return s;
+                        P(LPAREN, "(");
+                        P(RPAREN, ")");
+                        P(LBRACKET, "[");
+                        P(RBRACKET, "]");
+                        P(LBRACE, "{");
+                        P(RBRACE, "}");
+                        P(LANGLE, "<");
+                        P(RANGLE, ">");
+                        P(BANG, "!");
+                        P(AT, "@");
+                        P(HASH, "#");
+                        P(DOLLAR, "$");
+                        P(PERCENT, "%");
+                        P(CARET, "^");
+                        P(AMPERSAND, "&");
+                        P(STAR, "*");
+                        P(EQUALS, "=");
+                        P(PLUS, "+");
+                        P(DASH, "-");
+                        P(PIPE, "|");
+                        P(SLASH, "/");
+                        P(BACKSLASH, "\\");
+                        P(QUESTION, "?");
+                        P(COMMA, ",");
+                        P(DOT, ".");
+                        P(COLON, ":");
+                        P(SEMICOLON, ";");
+                        P(TILDE, "~");
+                        P(TICK, "'");
+                        P(BACKTICK, "`");
+                        P(DOUBLE_EQUAL, "==");
+                        P(NOT_EQUAL, "!=");
+                        P(LESS_EQUAL, "<=");
+                        P(GREATER_EQUAL, ">=");
+                        P(LSH, "<<");
+                        P(RSH, ">>");
+                        P(NEWLINE, "\n");
+#undef P
+            case IDENT:
+                        return s;
+            case INT_LITERAL:
+                        return std::string(int_literal);
+            case QUOTED_STRING:
+                        return std::string("\"") + QuoteString(s) + std::string("\"");
+            case LEXERERROR:
+                        return "\n(LEXER ERROR)\n";
+            default:
+                        return "";
+        }
+    }
+
+    // When printing source from a token stream, should we add a newline after
+    // this token? (This is not derived from the original source, since token
+    // streams may be generated programmatically, e.g. by macro expansion;
+    // rather, it's based on a simple set of heuristics.)
+    bool SourceAddNewline() const {
+        switch (type) {
+            case LBRACE:
+            case RBRACE:
+            case SEMICOLON:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private:
+    static std::string QuoteString(const std::string& input) {
+        std::string ret;
+        for (unsigned i = 0; i < input.size(); i++) {
+            if (input[i] == '\"') {
+                ret += "\\\"";
+            } else if (input[i] == '\\') {
+                ret += "\\\\";
+            } else if (input[i] == '\n') {
+                ret += "\\n";
+            } else {
+                ret += input[i];
+            }
+        }
+        return ret;
+    }
 };
 
 class Lexer {
     public:
-        Lexer(std::istream* in)
+        virtual Token Peek() const = 0;
+        virtual bool Have() const = 0;
+        virtual bool ReadNext() = 0;
+        virtual void SetIgnoreNewline(bool ignore_newline) = 0;
+};
+
+class LexerImpl : public Lexer {
+    public:
+        LexerImpl(std::istream* in)
             : stream_(in), have_peek_(false),
               ignore_newline_(false) {
             ReadNext();
         }
 
-        void SetIgnoreNewline(bool ignore_newline) {
+        virtual void SetIgnoreNewline(bool ignore_newline) {
             ignore_newline_ = ignore_newline;
             if (Have() && Peek().type == Token::NEWLINE) {
                 ReadNext();
             }
         }
 
-        Token Peek() const {
+        virtual Token Peek() const {
             assert(have_peek_);
             return token_;
         }
-        bool Have() const {
+        virtual bool Have() const {
             return have_peek_;
         }
 
-        bool StartsWith(std::string s, std::string prefix) {
-            return s.size() >= prefix.size() &&
-                   s.substr(0, prefix.size()) == prefix;
-        }
-
-        bool ReadNext() {
+        virtual bool ReadNext() {
             have_peek_ = false;
             if (stream_.Eof()) return false;
 
@@ -350,7 +446,6 @@ class Lexer {
                         P(AT, '@');
                         // no HASH -- interpreted as start of comment
                         P(DOLLAR, '$');
-                        P(PERCENT, '%');
                         P(CARET, '^');
                         P(AMPERSAND, '&');
                         P(STAR, '*');
@@ -440,7 +535,7 @@ class Lexer {
                         state = S_INIT;
                         break;
                     case S_IDENT:
-                        if (!eof && (isalnum(c) || c == '_')) {
+                        if (!eof && (isalnum(c) || c == '_' || c == '!')) {
                             cur_token += c;
                             stream_.ReadNext();
                             continue;
@@ -550,6 +645,41 @@ class Lexer {
             if (isdigit(c)) return true;
             return false;
         }
+
+        bool StartsWith(std::string s, std::string prefix) {
+            return s.size() >= prefix.size() &&
+                   s.substr(0, prefix.size()) == prefix;
+        }
+
+};
+
+class TokenPrinter {
+    public:
+        TokenPrinter(std::ostream* out)
+            : out_(out) {}
+
+        void PrintToken(const Token& tok) {
+            (*out_) << tok.ToSource();
+            if (tok.SourceAddNewline()) {
+                (*out_) << std::endl;
+            } else {
+                (*out_) << " ";
+            }
+        }
+
+        bool PrintFromLexer(Lexer* lex) {
+            while (lex->Have()) {
+                if (lex->Peek().type == Token::LEXERERROR) {
+                    return false;
+                }
+                PrintToken(lex->Peek());
+                lex->ReadNext();
+            }
+            return true;
+        }
+
+    private:
+        std::ostream* out_;
 };
 
 class ParserBase {

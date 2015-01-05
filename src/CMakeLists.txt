@@ -15,6 +15,7 @@ set(BACKEND_DRIVER
     backend/main.cc)
 
 set(FRONTEND_SRCS
+    frontend/macro.cc
     frontend/parser.cc
     frontend/ast.cc
     frontend/visitor.cc

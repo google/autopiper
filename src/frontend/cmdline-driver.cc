@@ -30,6 +30,7 @@ static const char* kUsage =
     "Usage: autopiper [flags] <input>\n"
     "    Flags:\n"
     "        -o <file>:          specify the Verilog output filename (<input>.v by default).\n"
+    "        --expand-macros:    print macro-expanded source and exit.\n"
     "        --print-ast-orig:   print the AST after parsing.\n"
     "        --print-ast:        print the AST before codegen, after transforms.\n"
     "        --print-ir:         print the IR after frontend codegen,\n"
@@ -76,7 +77,10 @@ class FrontendFlags : public CmdlineParser {
                 const std::string& flag,
                 bool have_value,
                 const std::string& value) {
-            if (flag == "--print-ast-orig") {
+            if (flag == "--expand-macros") {
+                driver_->options_.expand_macros = true;
+                return FLAG_CONSUMED_KEY;
+            } else if (flag == "--print-ast-orig") {
                 driver_->options_.print_ast_orig = true;
                 return FLAG_CONSUMED_KEY;
             } else if (flag == "--print-ast") {

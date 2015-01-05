@@ -1,4 +1,5 @@
 - Macro expander
+  - Include option to print expanded form (just print the token stream)
 - Bypass values
   - prepare, provide, unprovide, ask, askvalue (with index match)
 - ondone blocks (like onkill) and support in backend

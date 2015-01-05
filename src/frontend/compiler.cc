@@ -15,6 +15,7 @@
  */
 
 #include "frontend/compiler.h"
+#include "frontend/macro.h"
 #include "frontend/parser.h"
 #include "frontend/func-inline.h"
 #include "frontend/var-scope.h"
@@ -44,8 +45,15 @@ bool Compiler::CompileFile(const Options& options, ErrorCollector* collector) {
         return false;
     }
 
-    Lexer lexer(&in);
-    Parser parser(options.filename, &lexer, collector);
+    LexerImpl lexer(&in);
+    MacroExpander macro(&lexer, collector);
+    Parser parser(options.filename, &macro, collector);
+
+    if (options.expand_macros) {
+        TokenPrinter tokprinter(&cout);
+        return tokprinter.PrintFromLexer(&macro);
+    }
+
     unique_ptr<AST> ast(new AST());
     if (!parser.Parse(ast.get())) {
         return false;

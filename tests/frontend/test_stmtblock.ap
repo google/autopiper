@@ -1,0 +1,9 @@
+func entry main() : void {
+    let x = expr {
+        let y : int32 = 2;
+        y + 4;
+    };
+
+    let p : port int32 = port;
+    write p, x;
+}

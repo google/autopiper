@@ -1,5 +1,3 @@
-- Macro expander
-  - Include option to print expanded form (just print the token stream)
 - Bypass values
   - prepare, provide, unprovide, ask, askvalue (with index match)
 - ondone blocks (like onkill) and support in backend
@@ -15,7 +13,6 @@
       priority in general, and be exempt from 'same stage'.
   - writes to an array are slightly different: each write implies a separate
     write port.
-- STMTBLOCK exprs via 'expr { ... }'.
 - support for defining new toplevels inside other funcs, while getting access
   to arrays/ports (with dynamic scope)
   - new statement type: anonymous func. Codegen must use same context, stash

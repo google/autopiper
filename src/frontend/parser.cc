@@ -856,6 +856,16 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             return ret;
         }
 
+        if (ident == "expr") {
+            Consume();
+            ret->op = ASTExpr::STMTBLOCK;
+            ret->stmt.reset(new ASTStmtBlock());
+            if (!ParseBlock(ret->stmt.get())) {
+                return astnull<ASTExpr>();
+            }
+            return ret;
+        }
+
         if (consts_.find(ident) != consts_.end()) {
             Consume();
             ret->op = ASTExpr::CONST;

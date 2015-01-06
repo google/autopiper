@@ -481,15 +481,18 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
 
         case ASTExpr::STMTBLOCK: {
             // Find the last stmt, if any -- should be a StmtExpr.
-            if (node->stmt->stmts.size()) {
-                ASTStmt* last = node->stmt->stmts.back().get();
-                if (last->expr) {
-                    ASTExpr* ret_expr = last->expr->expr.get();
-                    InferenceNode* expr_node = NodeForAST(ret_expr);
-                    ConveyType(n, expr_node);
-                    ConveyType(expr_node, n);
-                }
+            if (node->stmt->stmts.empty() ||
+                !node->stmt->stmts.back()->expr) {
+                Error(node.get(),
+                        "Statement-block expression does not end with an "
+                        "expression statement");
+                return VISIT_END;
             }
+            ASTStmt* last = node->stmt->stmts.back().get();
+            ASTExpr* ret_expr = last->expr->expr.get();
+            InferenceNode* expr_node = NodeForAST(ret_expr);
+            ConveyType(n, expr_node);
+            ConveyType(expr_node, n);
             break;
         } 
 

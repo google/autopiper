@@ -153,13 +153,7 @@ bool CreatePorts(IRProgram* program,
         for (auto* stmt : stmts) {
             stmt->port = port.get();
             if (IRWritesPort(stmt->type)) {
-                if (port->def != NULL) {
-                    collector->ReportError(stmt->location, ErrorCollector::ERROR,
-                            strprintf("Multiple writers to port '%s' (first writer is %%%d)",
-                                port->name.c_str(), port->def->valnum));
-                    return false;
-                }
-                port->def = stmt;
+                port->defs.push_back(stmt);
                 if (stmt->type == IRStmtPortWrite) {
                     port->type = IRPort::PORT;
                 } else if (stmt->type == IRStmtChanWrite) {

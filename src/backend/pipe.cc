@@ -48,6 +48,7 @@ string Pipe::ToString() const {
             }
             os << " }" << endl;
             for (auto* stmt : stage->stmts) {
+                if (stmt->deleted) continue;
                 os << stmt->ToString() << endl;
             }
             os << endl;

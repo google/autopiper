@@ -99,6 +99,7 @@ string IRBB::ToString() const {
     }
     s += label + ":\n";
     for (auto& stmt : stmts) {
+        if (stmt->deleted) continue;
         s += stmt->ToString() + "\n";
     }
     return s;

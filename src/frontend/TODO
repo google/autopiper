@@ -1,18 +1,8 @@
 - Bypass values
   - prepare, provide, unprovide, ask, askvalue (with index match)
-- ondone blocks (like onkill) and support in backend
-  - ondone and onkill are codegen'd only once. The kill block is jumped to by
-    all kill points. The done block is placed at the end of the 'main spur'.
 - onkillyounger and support in the backend
   - codegen'd only once; jumped to by all killyounger points.
-- Multiple-writer semantics
-  - all writes to a port, chan, reg must be in the same timing stage
-  - arbitration is by an arbitrary order (well-defined results only when all
-    writes are mutually exclusive)
-    - TODO: How does this interact with onkill/ondone? These should take higher
-      priority in general, and be exempt from 'same stage'.
-  - writes to an array are slightly different: each write implies a separate
-    write port.
+- writevalid stmt.
 
 OoO-decomposed-as-macros:
 - transactional state macros (or primitives?)

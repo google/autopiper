@@ -35,8 +35,8 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
 
     // Pass 1: derive width.
     // Look for a write first -- if present, this defines the width.
-    if (port->def) {
-        width = port->def->args[0]->width;
+    if (!port->defs.empty()) {
+        width = port->defs[0]->args[0]->width;
     }
     // If no writes, pick a width from the first read (they must all have the
     // same width).
@@ -50,7 +50,7 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
 
     port->width = width;
 
-    // Pass 2: check derived width against reads.
+    // Pass 2: check derived width against reads and all writes.
     for (auto* use : port->uses) {
         if (use->width != width) {
             collector->ReportError(use->location, ErrorCollector::ERROR,
@@ -60,8 +60,17 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
             return false;
         }
     }
+    for (auto* def : port->defs) {
+        if (def->width != width) {
+            collector->ReportError(def->location, ErrorCollector::ERROR,
+                    strprintf("Port write width of %d does not match derived "
+                              "width of %d on port '%s'",
+                              def->width, width, port->name.c_str()));
+            return false;
+        }
+    }
 
-    // Check that the port def and uses are either consistently chan or port
+    // Check that the port defs and uses are either consistently chan or port
     // ops. (If there is a def, it will have already set the type
     // appropriately.)
     for (auto* use : port->uses) {
@@ -78,18 +87,18 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
             return false;
         }
     }
-    // Check that the writer (def), if any, also is of the correct type.
-    if (port->def) {
+    // Check that the writers (defs), if any, also are of the correct type.
+    for (auto* def : port->defs) {
         IRStmtType expected_write_type = IRStmtChanWrite;
         switch (port->type) {
             case IRPort::CHAN: expected_write_type = IRStmtChanWrite; break;
             case IRPort::PORT: expected_write_type = IRStmtPortWrite; break;
             default: assert(false); break;
         }
-        if (port->def->type != expected_write_type) {
-            collector->ReportError(port->def->location, ErrorCollector::ERROR,
+        if (def->type != expected_write_type) {
+            collector->ReportError(def->location, ErrorCollector::ERROR,
                     strprintf("Def %%%d on port '%s' is of wrong type (port/chan)",
-                        port->def->valnum, port->name.c_str()));
+                        def->valnum, port->name.c_str()));
             return false;
         }
     }
@@ -97,7 +106,7 @@ bool DerivePortWidth(IRPort* port, ErrorCollector* collector) {
     // Check that the port is exported only if a port, not a chan.
     if (port->exported && port->type != IRPort::PORT) {
         Location empty_loc;
-        collector->ReportError(port->def ? port->def->location :
+        collector->ReportError(port->defs.size() > 0 ? port->defs[0]->location :
                                port->uses.size() > 0 ? port->uses[0]->location :
                                empty_loc,
                                ErrorCollector::ERROR,
@@ -175,14 +184,6 @@ bool DeriveStorageSize(IRStorage* storage, ErrorCollector* collector) {
     assert(data_width >= 0);
     storage->index_width = index_width;
     storage->data_width = data_width;
-
-    // If single reg, we cannot allow more than one writer.
-    if (index_width == 0 && storage->writers.size() > 1) {
-        collector->ReportError(storage->writers[1]->location, ErrorCollector::ERROR,
-                strprintf("More than one writer for single register storage '%s'. "
-                          "Only one writer allowed.", storage->name.c_str()));
-        return false;
-    }
 
     // Check that all readers match index and data width.
     for (auto* reader : storage->readers) {

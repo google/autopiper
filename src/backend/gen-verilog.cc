@@ -104,7 +104,7 @@ void VerilogGenerator::GenerateModulePortDef(const IRPort* port) {
     out_->SetVars({
         { "name", port->name },
         { "msb", strprintf("%d", port->width - 1) },
-        { "dir", port->def != nullptr ? "output" : "input" },
+        { "dir", port->defs.size() > 0 ? "output" : "input" },
     });
     out_->Print(",\n$dir$ [$msb$:0] $name$");
 }
@@ -119,6 +119,10 @@ void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
     // Special case: eliminate zero-width data ops, as they're the result of
     // 'void' functions and need not be materialized.
     if (stmt->type == IRStmtExpr && stmt->width == 0) {
+        return;
+    }
+    // Eliminate deleted ops.
+    if (stmt->deleted) {
         return;
     }
     // Materialize all inputs.
@@ -155,7 +159,7 @@ void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
             break;
 
         case IRStmtChanRead:
-            out_->SetVar("arg", GetSignalInStage(stmt->port->def->args[0],
+            out_->SetVar("arg", GetSignalInStage(stmt->port->defs[0]->args[0],
                                                  stmt->stage->stage));
             out_->Print("assign $signal$ = $arg$;\n");
             break;

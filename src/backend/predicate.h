@@ -99,6 +99,14 @@ class Predicate {
         }
     }
 
+    // ANDs this term with another term, updating this term.
+    void AndWith(const Term& other) {
+        if (falsified) return;
+        for (auto& p : other.factors) {
+            AndWith(p.first, p.second);
+        }
+    }
+
     // ORs this term with another term, updating this term and the other
     // term. This term and the other term may be simplified (have factors
     // removed) or even, in the extreme case, become empty/falsified (in
@@ -222,6 +230,35 @@ class Predicate {
       }
       p.Simplify();
       p.backedge = false;
+      return p;
+  }
+
+  // ANDs the whole predicate with a new term, returning a new predicate.
+  Predicate AndWith(const Term& other) const {
+      if (other.falsified) return False();
+
+      Predicate p(*this);
+      for (auto& term : p.terms) {
+          term.AndWith(other);
+      }
+      p.Simplify();
+      return p;
+  }
+
+  // ANDs the whole predicate with another predicate, returning a new
+  // predicate. This is built from AndWith and OrWith, using the fact that ORs
+  // distribute over ANDs.
+  Predicate AndWith(const Predicate& other) const {
+      if (other.IsFalse()) return False();
+
+      std::vector<Predicate> intermediates;
+      for (auto& term : other.terms) {
+          intermediates.push_back(Predicate(*this).AndWith(term));
+      }
+      Predicate p;
+      for (auto& i : intermediates) {
+          p = p.OrWith(i);
+      }
       return p;
   }
 

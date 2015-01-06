@@ -1,0 +1,50 @@
+#test: port test_input 32
+#test: port test_output 32
+#test: port test_output_2 32
+
+#test: cycle 1
+#test: write test_input 0
+
+#test: cycle 2
+#test: write test_input 2
+#test: expect test_output 1
+
+#test: cycle 3
+#test: write test_input 1
+#test: expect test_output 3
+#test: expect test_output_2 1
+
+#test: cycle 4
+#test: write test_input 42
+#test: expect test_output 2
+#test: expect test_output_2 3
+
+#test: cycle 5
+#test: expect test_output 4
+#test: expect test_output_2 2
+
+#test: cycle 6
+#test: expect test_output_2 4
+
+func entry main() : void {
+    let p : port int32 = port "test_output";
+    let p2 : port int32 = port "test_output_2";
+    let i : port int32 = port "test_input";
+    let r : reg int32 = reg;
+
+    if (read i == 0) {
+        write p, 1;
+        reg r = 1;
+    } else if (read i == 1) {
+        write p, 2;
+        reg r = 2;
+    } else if (read i == 2) {
+        write p, 3;
+        reg r = 3;
+    } else {
+        write p, 4;
+        reg r = 4;
+    }
+
+    write p2, reg r;
+}

@@ -232,6 +232,7 @@ struct IRStmt {
         valid_in = NULL;
         valid_out = NULL;
         valid_spine = false;
+        deleted = false;
     }
     
     int valnum;
@@ -271,6 +272,8 @@ struct IRStmt {
     std::vector<IRStmt*> pipedag_deps; // DAG of side-effecting ops
     PipeStage* stage;  // stage into which this op is placed
 
+    bool deleted;
+
     // Auxiliary info
     std::string ToString() const;
     Location location;
@@ -285,7 +288,6 @@ struct IRPort {
 
     IRPort() {
         width = 0;
-        def = nullptr;
         type = PORT;
         exported = false;
     }
@@ -295,7 +297,7 @@ struct IRPort {
     Type type;
     bool exported;
 
-    IRStmt* def;
+    std::vector<IRStmt*> defs;
     std::vector<IRStmt*> uses;
     std::vector<IRStmt*> exports;
 };

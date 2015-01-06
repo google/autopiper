@@ -112,19 +112,22 @@ bool CheckChanUses(IRProgram* program,
         for (auto& bb : pipe->bbs) {
             for (auto& stmt : bb->stmts) {
                 if (stmt->type == IRStmtChanRead &&
-                    !stmt->port->def) {
+                    stmt->port->defs.empty()) {
                     coll->ReportError(stmt->location, ErrorCollector::ERROR,
                             strprintf("Statement %%%d uses chan '%s' with no writer",
                                 stmt->valnum, stmt->port->name.c_str()));
                     return false;
                 }
-                if (stmt->type == IRStmtChanRead &&
-                    stmt->port->def->bb->pipe->sys != sys) {
-                    coll->ReportError(stmt->location, ErrorCollector::ERROR,
-                            strprintf("Statement %%%d uses chan '%s' outside of its "
-                                      "defining spawn-tree.", stmt->valnum,
-                                      stmt->port->name.c_str()));
-                    return false;
+                if (stmt->type == IRStmtChanRead) {
+                    for (auto* def : stmt->port->defs) {
+                        if (def->bb->pipe->sys != sys) {
+                            coll->ReportError(stmt->location, ErrorCollector::ERROR,
+                                    strprintf("Statement %%%d uses chan '%s' outside of its "
+                                              "defining spawn-tree.", stmt->valnum,
+                                              stmt->port->name.c_str()));
+                            return false;
+                        }
+                    }
                 }
             }
         }
@@ -768,9 +771,11 @@ bool BuildPipeDAG(IRProgram* program,
     // stage they happen in.)
     for (auto* bb : pipe->bbs) {
         for (auto& stmt : bb->stmts) {
-            if (IRReadsPort(stmt->type) && stmt->port && stmt->port->def &&
+            if (IRReadsPort(stmt->type) && stmt->port &&
                 stmt->port->type == IRPort::CHAN) {
-                stmt->pipedag_deps.push_back(stmt->port->def);
+                for (auto* def : stmt->port->defs) {
+                    stmt->pipedag_deps.push_back(def);
+                }
             }
         }
     }
@@ -1010,6 +1015,195 @@ bool InsertKillIfKills(IRProgram* program,
         // pipestage crossing.
         if (!PropagateKillIfDownstream(program, sys, kill_if_stmt, coll)) {
             return false;
+        }
+    }
+
+    return true;
+}
+
+bool ConvertSingleWrites(IRProgram* program,
+                         PipeSys* sys,
+                         ErrorCollector* coll) {
+
+    struct WrittenObj {
+        int stage;
+        IRPort* port;
+        IRStorage* storage;
+        vector<IRStmt*> stmts;
+
+        WrittenObj() : stage(-1), port(nullptr), storage(nullptr) {}
+    };
+
+    map<void*, WrittenObj> written_objs;
+
+    for (auto& pipe : sys->pipes) {
+        for (auto* stmt : pipe->stmts) {
+
+            // We consider port, chan, and reg writes (N.B.: *not* array
+            // writes; those imply a separate write port for each write
+            // IRStmt).
+            void* written_obj = nullptr;
+            const char* name = "";
+            IRPort* port = nullptr;
+            IRStorage* storage = nullptr;
+            switch (stmt->type) {
+                case IRStmtPortWrite:
+                case IRStmtChanWrite:
+                    written_obj = stmt->port;
+                    name = stmt->port_name.c_str();
+                    break;
+                case IRStmtRegWrite:
+                    written_obj = stmt->storage;
+                    name = stmt->port_name.c_str();
+                    break;
+                default:
+                    break;
+            }
+
+            if (written_obj) {
+                auto it = written_objs.find(written_obj);
+                // Do we already have a record of this written object? If so,
+                // compare stage number (verify it's the same as other writers)
+                // and add ourselves to the list of writers.
+                if (it != written_objs.end()) {
+                    if (stmt->stage->stage != it->second.stage) {
+                        coll->ReportError(stmt->location, ErrorCollector::ERROR,
+                                strprintf(
+                                    "Write to port/chan/reg %s occurs in stage "
+                                    "%d and %d. All writes must be in one stage.",
+                                    name,
+                                    stmt->stage->stage, it->second.stage));
+                        return false;
+                    }
+
+                    it->second.stmts.push_back(stmt);
+                } else {
+                    WrittenObj record;
+                    record.stage = stmt->stage->stage;
+                    record.port = port;
+                    record.storage = storage;
+                    record.stmts.push_back(stmt);
+                    written_objs.insert(make_pair(written_obj, record));
+                }
+            }
+        }
+    }
+
+    // For each written object, ensure that we got all defs, i.e. that there are
+    // none in other pipe systems (processes).
+    for (auto& p : written_objs) {
+        if (p.second.port) {
+            for (auto* def : p.second.port->defs) {
+                if (def->pipe->sys != sys) {
+                    coll->ReportError(def->location, ErrorCollector::ERROR,
+                            "Write to port/chan appears in different "
+                            "process than some other writer. All writers "
+                            "must be located in the same top-level process "
+                            "(entry function).");
+                    return false;
+                }
+            }
+        }
+        if (p.second.storage) {
+            for (auto* writer : p.second.storage->writers) {
+                if (writer->pipe->sys != sys) {
+                    coll->ReportError(writer->location, ErrorCollector::ERROR,
+                            "Write to reg appears in different "
+                            "process than some other writer. All writers "
+                            "must be located in the same top-level process "
+                            "(entry function).");
+                    return false;
+                }
+            }
+        }
+    }
+
+    // For each written object, ensure that predicates do not overlap (this is
+    // equivalent to saying that no write dominates another write, i.e., that
+    // there is only one write per path).
+    for (auto& p : written_objs) {
+        for (auto* stmt : p.second.stmts) {
+            for (auto* other : p.second.stmts) {
+                if (stmt == other) continue;
+                if (!stmt->valid_in_pred.AndWith(
+                            other->valid_in_pred).IsFalse()) {
+                    coll->ReportError(other->location, ErrorCollector::ERROR,
+                            "Two writes to one port/chan/reg have overlapping "
+                            "predicates. Only one write may occur on a given "
+                            "path.");
+                    return false;
+                }
+            }
+        }
+    }
+
+    // Now, for each written object with more than one writer, generate a
+    // sequence of select operations and rewrite the source of the write.
+    for (auto& p : written_objs) {
+        if (p.second.stmts.size() < 2) continue;
+        // Wire up the sels and valid-signal combining ORs.
+        IRStmt* last_sel = nullptr;
+        IRStmt* last_or = nullptr;
+        for (unsigned i = 0; i < p.second.stmts.size() - 1; i++) {
+            unique_ptr<IRStmt> sel(new IRStmt());
+            sel->valnum = program->GetValnum();
+            sel->type = IRStmtExpr;
+            sel->op = IRStmtOpSelect;
+            sel->pipe = p.second.stmts[i]->pipe;
+            sel->stage = p.second.stmts[i]->stage;
+
+            sel->args.push_back(p.second.stmts[i+1]->valid_in);
+            sel->arg_nums.push_back(sel->args.back()->valnum);
+
+            sel->args.push_back(p.second.stmts[i+1]->args[0]);
+            sel->arg_nums.push_back(sel->args.back()->valnum);
+            sel->args.push_back(last_sel ? last_sel : p.second.stmts[i]->args[0]);
+            sel->arg_nums.push_back(sel->args.back()->valnum);
+            sel->width = sel->args[1]->width;
+            last_sel = sel.get();
+
+            p.second.stmts[i]->pipe->stmts.push_back(sel.get());
+            p.second.stmts[i]->stage->stmts.push_back(sel.get());
+            p.second.stmts[i]->bb->stmts.push_back(move(sel));
+
+            unique_ptr<IRStmt> valid_or(new IRStmt());
+            valid_or->valnum = program->GetValnum();
+            valid_or->type = IRStmtExpr;
+            valid_or->op = IRStmtOpOr;
+            valid_or->pipe = p.second.stmts[i]->pipe;
+            valid_or->stage = p.second.stmts[i]->stage;
+            valid_or->args.push_back(last_or ? last_or : p.second.stmts[i]->valid_in);
+            valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
+            valid_or->args.push_back(p.second.stmts[i+1]->valid_in);
+            valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
+            valid_or->width = 1;
+            last_or = valid_or.get();
+
+            p.second.stmts[i]->pipe->stmts.push_back(valid_or.get());
+            p.second.stmts[i]->stage->stmts.push_back(valid_or.get());
+            p.second.stmts[i]->bb->stmts.push_back(move(valid_or));
+        }
+
+        // Rewrite the first write's arg, and replace its 'valid_in' with the
+        // OR of all.
+        IRStmt* one_write = p.second.stmts.back();
+        one_write->valid_in = last_or;
+        one_write->args[0] = last_sel;
+        one_write->arg_nums[0] = last_sel->valnum;
+
+        // Delete all of the other writes.
+        for (auto* stmt : p.second.stmts) {
+            if (stmt != one_write) {
+                stmt->deleted = true;
+            }
+        }
+
+        if (one_write->port) {
+            one_write->port->defs.clear();
+            one_write->port->defs.push_back(one_write);
+        } else if (one_write->storage) {
+            one_write->storage->writers.clear();
+            one_write->storage->writers.push_back(one_write);
         }
     }
 
@@ -1297,6 +1491,11 @@ vector<unique_ptr<PipeSys>> IRProgram::Lower(ErrorCollector* coll) {
 
         // We clone 'kill_if' backward slices downstream to each stage.
         if (!InsertKillIfKills(this, sys.get(), coll)) goto err;
+
+        // We check that ports, chans, and regs have all write-points in only
+        // one stage. Then we convert the multiple writes to a single write
+        // with a muxed input. (We check that valids do not overlap.)
+        if (!ConvertSingleWrites(this, sys.get(), coll)) goto err;
 
         for (auto& pipe : sys->pipes) {
 

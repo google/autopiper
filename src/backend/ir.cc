@@ -94,6 +94,9 @@ string IRProgram::ToString() const {
 
 string IRBB::ToString() const {
     string s;
+    if (is_entry) {
+        s += "entry ";
+    }
     s += label + ":\n";
     for (auto& stmt : stmts) {
         s += stmt->ToString() + "\n";

@@ -76,6 +76,7 @@ struct ASTStmtKillIf;
 struct ASTStmtTiming;
 struct ASTStmtStage;
 struct ASTStmtExpr;
+struct ASTStmtNestedFunc;
 
 struct ASTExpr;
 
@@ -182,6 +183,7 @@ struct ASTStmt : public ASTBase {
     ASTRef<ASTStmtTiming> timing;
     ASTRef<ASTStmtStage> stage;
     ASTRef<ASTStmtExpr> expr;
+    ASTRef<ASTStmtNestedFunc> nested;
 };
 
 struct ASTStmtExpr : public ASTBase {
@@ -258,6 +260,10 @@ struct ASTStmtTiming : public ASTBase {
 
 struct ASTStmtStage : public ASTBase {
     int offset;
+};
+
+struct ASTStmtNestedFunc : public ASTBase {
+    ASTRef<ASTStmtBlock> body;
 };
 
 struct ASTExpr : public ASTBase {
@@ -371,6 +377,7 @@ AST_METHODS(ASTStmtKillIf);
 AST_METHODS(ASTStmtTiming);
 AST_METHODS(ASTStmtStage);
 AST_METHODS(ASTStmtExpr);
+AST_METHODS(ASTStmtNestedFunc);
 AST_METHODS(ASTExpr);
 AST_METHODS(ASTTypeField);
 AST_METHODS(ASTPragma);

@@ -1,0 +1,26 @@
+func entry main() : void {
+    let p1 : port int32 = port;
+    let p2 : port int32 = port;
+    let p3 : port int32 = port;
+
+    let x = read p1;
+    write p2, x;
+
+    func {
+        timing {
+            stage 0;
+            let x : int32 = read p2;
+            stage 1;
+            write p3, x;
+        }
+    }
+
+    func {
+        timing {
+            stage 0;
+            let x = read p3;
+            stage 1;
+            write p1, x;
+        }
+    }
+}

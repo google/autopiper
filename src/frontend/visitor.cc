@@ -104,6 +104,7 @@ VISIT(ASTStmt, {
     T(timing, Timing)
     T(stage, Stage)
     T(expr, Expr)
+    T(nested, NestedFunc)
 })
 
 #undef T
@@ -198,6 +199,10 @@ VISIT(ASTStmtStage, {})
 
 VISIT(ASTStmtExpr, {
     CHECK(VisitASTExpr(node->expr.get(), context));
+})
+
+VISIT(ASTStmtNestedFunc, {
+    CHECK(VisitASTStmtBlock(node->body.get(), context));
 })
 
 VISIT(ASTExpr, {
@@ -313,6 +318,7 @@ MODIFY(ASTStmt, {
     T(timing, Timing)
     T(stage, Stage)
     T(expr, Expr)
+    T(nested, NestedFunc)
 })
 
 #undef T
@@ -405,6 +411,10 @@ MODIFY(ASTStmtStage, {})
 
 MODIFY(ASTStmtExpr, {
     FIELD(node->expr, ASTExpr);
+})
+
+MODIFY(ASTStmtNestedFunc, {
+    FIELD(node->body, ASTStmtBlock);
 })
 
 MODIFY(ASTExpr, {

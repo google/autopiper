@@ -90,12 +90,12 @@ CodeGenPass::ModifyASTFunctionDefPre(ASTRef<ASTFunctionDef>& node) {
 
 CodeGenPass::Result
 CodeGenPass::ModifyASTFunctionDefPost(ASTRef<ASTFunctionDef>& node) {
-    // Add a 'kill' at the end in case the function body did not.
+    // Add a 'done' at the end in case the function body did not.
     if (node->is_entry) {
-        unique_ptr<IRStmt> kill_stmt(new IRStmt());
-        kill_stmt->valnum = ctx_->Valnum();
-        kill_stmt->type = IRStmtKill;
-        ctx_->AddIRStmt(ctx_->CurBB(), move(kill_stmt));
+        unique_ptr<IRStmt> done_stmt(new IRStmt());
+        done_stmt->valnum = ctx_->Valnum();
+        done_stmt->type = IRStmtDone;
+        ctx_->AddIRStmt(ctx_->CurBB(), move(done_stmt));
     }
     return VISIT_CONTINUE;
 }
@@ -281,8 +281,8 @@ CodeGenPass::ModifyASTStmtTimingPre(ASTRef<ASTStmtTiming>& node) {
     unique_ptr<IRTimeVar> timevar(new IRTimeVar());
     timevar->name = ctx_->GenSym("timing");
     ctx_->ir()->timevar_map[timevar->name] = timevar.get();
-    timing_stack_.push_back(timevar.get());
-    timing_last_stage_.push_back(0);
+    c_.back().timing_stack.push_back(timevar.get());
+    c_.back().timing_last_stage.push_back(0);
 
     // Create an implicit barrier with offset 0.
     unique_ptr<IRStmt> timing_barrier(new IRStmt());
@@ -304,27 +304,27 @@ CodeGenPass::ModifyASTStmtTimingPost(ASTRef<ASTStmtTiming>& node) {
     unique_ptr<IRStmt> timing_barrier(new IRStmt());
     timing_barrier->valnum = ctx_->Valnum();
     timing_barrier->type = IRStmtTimingBarrier;
-    timing_barrier->timevar = timing_stack_.back();
-    timing_stack_.back()->uses.push_back(timing_barrier.get());
-    timing_barrier->time_offset = timing_last_stage_.back();
+    timing_barrier->timevar = c_.back().timing_stack.back();
+    c_.back().timing_stack.back()->uses.push_back(timing_barrier.get());
+    timing_barrier->time_offset = c_.back().timing_last_stage.back();
     ctx_->AddIRStmt(ctx_->CurBB(), move(timing_barrier));
 
-    timing_stack_.pop_back();
-    timing_last_stage_.pop_back();
+    c_.back().timing_stack.pop_back();
+    c_.back().timing_last_stage.pop_back();
     return VISIT_CONTINUE;
 }
 
 CodeGenPass::Result
 CodeGenPass::ModifyASTStmtStagePost(ASTRef<ASTStmtStage>& node) {
-    if (timing_stack_.empty()) {
+    if (c_.back().timing_stack.empty()) {
         Error(node.get(),
                 "'stage' statement appears outside of a timing {} block. "
                 "Staging barriers can occur only inside the context of a "
                 "timing {} block.");
         return VISIT_END;
     }
-    IRTimeVar* timevar = timing_stack_.back();
-    int& last_stage = timing_last_stage_.back();
+    IRTimeVar* timevar = c_.back().timing_stack.back();
+    int& last_stage = c_.back().timing_last_stage.back();
 
     // We place (i) a barrier anchored to the *last* stage statement's offset,
     // to late-constrain all statements before this stage start; and (ii) a
@@ -590,6 +590,39 @@ CodeGenPass::ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node) {
     return VISIT_CONTINUE;
 }
 
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtNestedFuncPre(ASTRef<ASTStmtNestedFunc>& node) {
+    // Push a new function context and save the code-generation point (current
+    // BB) of the current function to restore later.
+    c_.push_back({});
+    c_.back().last_curbb = ctx_->CurBB();
+
+    // Start a new function with a new entry BB.
+    IRBB* entry = ctx_->AddBB("anon_func");
+    entry->is_entry = true;
+    ctx_->ir()->entries.push_back(entry);
+    ctx_->SetCurBB(entry);
+
+    // manually codegen the body.
+    ASTVisitor visitor;
+    if (!visitor.ModifyASTStmtBlock(node->body, this)) {
+        return VISIT_END;
+    }
+
+    // End with a 'done'.
+    unique_ptr<IRStmt> done_stmt(new IRStmt());
+    done_stmt->valnum = ctx_->Valnum();
+    done_stmt->type = IRStmtDone;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(done_stmt));
+
+    // restore the old context.
+    ctx_->SetCurBB(c_.back().last_curbb);
+    c_.pop_back();
+
+    // We already codegen'd the body -- don't recurse into it on this visit pass.
+    return VISIT_TERMINAL;
+}
+
 // If-statement support.
 
 CodeGenPass::Result
@@ -820,8 +853,8 @@ CodeGenPass::Result
 CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
     ASTVisitor visitor;
 
-    loop_frames_.push_back({});
-    LoopFrame* frame = &loop_frames_.back();
+    c_.back().loop_frames.push_back({});
+    LoopFrame* frame = &c_.back().loop_frames.back();
     frame->while_block = node.get();
     frame->overlay_depth = ctx_->Bindings().Push();
 
@@ -898,7 +931,7 @@ CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
 
     // Re-establish |frame| -- recursive visit may have modified loop-frame
     // stack and re-allocated the stack storage.
-    frame = &loop_frames_.back();
+    frame = &c_.back().loop_frames.back();
 
     // Create the first actual body BB.
     IRBB* body_bb = ctx_->AddBB((bb_name_prefix + "body").c_str());
@@ -929,7 +962,7 @@ CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
 
     // Re-establish |frame| -- recursive visit may have modified loop-frame
     // stack and re-allocated the stack storage.
-    frame = &loop_frames_.back();
+    frame = &c_.back().loop_frames.back();
 
     // Add the implicit 'continue' jmp at the end of the body.
     IRBB* body_end_bb = ctx_->CurBB();
@@ -971,7 +1004,7 @@ CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
     ctx_->SetCurBB(frame->footer);
 
     // Pop the loop frame.
-    loop_frames_.pop_back();
+    c_.back().loop_frames.pop_back();
 
     // Indicate to traversal that we should not recurse, since we've already
     // manually done codegen for the body.
@@ -981,8 +1014,8 @@ CodeGenPass::ModifyASTStmtWhilePre(ASTRef<ASTStmtWhile>& node) {
 CodeGenPass::LoopFrame* CodeGenPass::FindLoopFrame(
         const ASTBase* node, const ASTIdent* label) {
     if (label) {
-        for (int i = loop_frames_.size() - 1; i >= 0; --i) {
-            LoopFrame* frame = &loop_frames_[i];
+        for (int i = c_.back().loop_frames.size() - 1; i >= 0; --i) {
+            LoopFrame* frame = &c_.back().loop_frames[i];
             if (frame->while_block->label &&
                 frame->while_block->label->name == label->name) {
                 return frame;
@@ -993,11 +1026,11 @@ CodeGenPass::LoopFrame* CodeGenPass::FindLoopFrame(
                     label->name.c_str()));
         return nullptr;
     } else {
-        if (loop_frames_.empty()) {
+        if (c_.back().loop_frames.empty()) {
             Error(node, "Break/continue not in loop");
             return nullptr;
         }
-        return &loop_frames_.back();
+        return &c_.back().loop_frames.back();
     }
 }
 

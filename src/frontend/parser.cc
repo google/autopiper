@@ -330,6 +330,7 @@ bool Parser::ParseStmt(ASTStmt* st) {
     HANDLE_STMT_TYPE("stage", stage, Stage);
     HANDLE_STMT_TYPE("spawn", spawn, Spawn);
     HANDLE_STMT_TYPE("return", return_, Return);
+    HANDLE_STMT_TYPE("func", nested, NestedFunc);
 
 #undef HANDLE_STMT_TYPE
 
@@ -512,6 +513,11 @@ bool Parser::ParseStmtStage(ASTStmtStage* stage) {
     Consume();
 
     return Consume(Token::SEMICOLON);
+}
+
+bool Parser::ParseStmtNestedFunc(ASTStmtNestedFunc* func) {
+    func->body.reset(new ASTStmtBlock());
+    return ParseBlock(func->body.get());
 }
 
 ASTRef<ASTExpr> Parser::ParseExpr() {

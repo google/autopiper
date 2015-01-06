@@ -13,11 +13,6 @@
       priority in general, and be exempt from 'same stage'.
   - writes to an array are slightly different: each write implies a separate
     write port.
-- support for defining new toplevels inside other funcs, while getting access
-  to arrays/ports (with dynamic scope)
-  - new statement type: anonymous func. Codegen must use same context, stash
-    away CurBB and start a new one.
-
 
 OoO-decomposed-as-macros:
 - transactional state macros (or primitives?)

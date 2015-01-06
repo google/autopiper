@@ -226,7 +226,9 @@ typedef std::map<ASTStmtLet*, const ASTExpr*> SubBindingMap;
 class CodeGenPass : public ASTVisitorContext {
     public:
         CodeGenPass(ErrorCollector* coll, CodeGenContext* ctx)
-            : ASTVisitorContext(coll), ctx_(ctx) {}
+            : ASTVisitorContext(coll), ctx_(ctx) {
+            c_.push_back({});
+        }
 
         // Call this after the codegen pass actually runs to clean up the
         // output.
@@ -256,6 +258,8 @@ class CodeGenPass : public ASTVisitorContext {
         virtual Result ModifyASTStmtTimingPost(ASTRef<ASTStmtTiming>& node);
         virtual Result ModifyASTStmtStagePost(ASTRef<ASTStmtStage>& node);
         virtual Result ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node);
+        virtual Result ModifyASTStmtNestedFuncPre(
+                ASTRef<ASTStmtNestedFunc>& node);
 
         // Expr codegen. Post-hook so that ops are already materialized.
         virtual Result ModifyASTExprPost(ASTRef<ASTExpr>& node);
@@ -284,8 +288,6 @@ class CodeGenPass : public ASTVisitorContext {
         virtual Result ModifyASTPragmaPost(ASTRef<ASTPragma>& node);
 
     private:
-        CodeGenContext* ctx_;
-
         const ASTExpr* FindEntityDef(
                 const ASTExpr* node,
                 ASTExpr::Op def_type,
@@ -301,7 +303,6 @@ class CodeGenPass : public ASTVisitorContext {
             // BB that jumps to (falls into) header. Used for phi generation.
             IRBB* in_bb;
         };
-        std::vector<LoopFrame> loop_frames_;
 
         LoopFrame* FindLoopFrame(const ASTBase* node, const ASTIdent* label);
         bool AddWhileLoopPhiNodeInputs(
@@ -313,9 +314,28 @@ class CodeGenPass : public ASTVisitorContext {
                 std::map<IRBB*, SubBindingMap>& edge_map,
                 IRBB* target);
 
-        // (lexical) stack of currently open timing {} blocks.
-        std::vector<IRTimeVar*> timing_stack_;
-        std::vector<int> timing_last_stage_;
+        // We store most of the codegen-visitor-walk state in a `FunctionCtx`,
+        // which we keep in a stack and push / start fresh inside nested
+        // anonymous entry funcs. The only environment that the nested funcs
+        // share with the containing func is the binding context, so that they
+        // can use ports/chans/arrays/regs in a lexical-scope manner. This is a
+        // MASSIVE HACK but, hey, it's all a bit research-y anyway.
+        struct FunctionCtx {
+            std::vector<LoopFrame> loop_frames;
+            // (lexical) stack of currently open timing {} blocks.
+            std::vector<IRTimeVar*> timing_stack;
+            std::vector<int> timing_last_stage;
+
+            // We don't keep the whole codegen context per function, but we do
+            // save CurBB and restore it on pop. This is the curbb of the
+            // *parent* frame, i.e., the saved value, since the current curbb
+            // is in ctx_.
+            IRBB* last_curbb;
+        };
+
+        // ------- Visitor state: --------
+        CodeGenContext* ctx_;
+        std::vector<FunctionCtx> c_;
 };
 
 }  // namespace frontend

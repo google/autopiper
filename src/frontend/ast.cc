@@ -153,6 +153,7 @@ AST_PRINTER(ASTStmt) {
     T(timing);
     T(stage);
     T(expr);
+    T(nested);
 #undef T
     out << I(0) << ")" << endl;
 }
@@ -293,6 +294,12 @@ AST_PRINTER(ASTStmtStage) {
 AST_PRINTER(ASTStmtExpr) {
     out << I(0) << "(stmt-expr " << node << endl;
     P(node->expr.get(), 1);
+    out << I(0) << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtNestedFunc) {
+    out << I(0) << "(stmt-nested " << node << endl;
+    P(node->body.get(), 1);
     out << I(0) << ")" << endl;
 }
 
@@ -491,6 +498,7 @@ AST_CLONE(ASTStmt) {
     SUB(timing);
     SUB(stage);
     SUB(expr);
+    SUB(nested);
     return ret;
 }
 
@@ -594,6 +602,12 @@ AST_CLONE(ASTStmtStage) {
 AST_CLONE(ASTStmtExpr) {
     SETUP(ASTStmtExpr);
     SUB(expr);
+    return ret;
+}
+
+AST_CLONE(ASTStmtNestedFunc) {
+    SETUP(ASTStmtNestedFunc);
+    SUB(body);
     return ret;
 }
 

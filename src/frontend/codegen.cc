@@ -734,20 +734,20 @@ CodeGenPass::ModifyASTStmtIfPre(ASTRef<ASTStmtIf>& node) {
 //
 // The code layout is:
 //
-// /---------------------------------------------------------\
-// | header                                                  | <-\
+// .---------------------------------------------------------.
+// | header                                                  | <-.
 // | (phi joins: all continue edges and fallthrough in-edge) |   |
 // | (loop condition check with conditional out to footer)   |   |
-// \---------------------------------------------------------/   |
+// `---------------------------------------------------------'   |
 //     |                                   ___(continue edges)___/
 //     v                                  /                      |
 //  (loop body region: arbitrarily complex)___(fallthrough edge)_/
 //     |
 //   (break edges)
 //     |
-// /-------------------------------------\
+// .-------------------------------------.
 // | footer (phi joins: all break edges) |
-// \-------------------------------------/
+// `-------------------------------------'
 //
 // N.B. that this structure is our generic low-level loop primitive and the
 // *only* way to build a backedge. Other loop types may be desugared to this.

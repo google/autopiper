@@ -331,6 +331,7 @@ bool Parser::ParseStmt(ASTStmt* st) {
     HANDLE_STMT_TYPE("spawn", spawn, Spawn);
     HANDLE_STMT_TYPE("return", return_, Return);
     HANDLE_STMT_TYPE("func", nested, NestedFunc);
+    HANDLE_STMT_TYPE("onkillyounger", onkillyounger, OnKillYounger);
 
 #undef HANDLE_STMT_TYPE
 
@@ -520,6 +521,11 @@ bool Parser::ParseStmtNestedFunc(ASTStmtNestedFunc* func) {
     return ParseBlock(func->body.get());
 }
 
+bool Parser::ParseStmtOnKillYounger(ASTStmtOnKillYounger* onkillyounger) {
+    onkillyounger->body.reset(new ASTStmtBlock());
+    return ParseBlock(onkillyounger->body.get());
+}
+
 ASTRef<ASTExpr> Parser::ParseExpr() {
     return ParseExprGroup1();
 }
@@ -693,6 +699,7 @@ ASTRef<ASTExpr> Parser::ParseExprGroup10() {
             ASTRef<ASTExpr> const_0 = New<ASTExpr>();
             const_0->op = ASTExpr::CONST;
             const_0->constant = 0;
+            const_0->has_constant = true;
             ret->ops.push_back(move(const_0));
             std::swap(ret->ops[0], ret->ops[1]);
         } else if (tok == Token::PLUS) {
@@ -820,6 +827,15 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
                 ret->ident->type = ASTIdent::PORT;
                 Consume();
             }
+            if (TryExpect(Token::IDENT) && CurToken().s == "default") {
+                Consume();
+                if (!Expect(Token::INT_LITERAL)) {
+                    return astnull<ASTExpr>();
+                }
+                ret->constant = CurToken().int_literal;
+                ret->has_constant = true;
+                Consume();
+            }
             return ret;
         }
 
@@ -876,6 +892,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
             Consume();
             ret->op = ASTExpr::CONST;
             ret->constant = consts_[ident];
+            ret->has_constant = true;
             return ret;
         }
 
@@ -892,6 +909,7 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
         ASTRef<ASTExpr> ret = New<ASTExpr>();
         ret->op = ASTExpr::CONST;
         ret->constant = CurToken().int_literal;
+        ret->has_constant = true;
         Consume();
         return ret;
     }

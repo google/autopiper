@@ -1023,8 +1023,9 @@ bool InsertKillIfKills(IRProgram* program,
 
 // Creates a RestartValue / RestartValueSrc pair to port a signal across
 // stages.
-IRStmt* CreateKillWriteLink(IRProgram* prog, IRStmt* src_value, IRStmt* consumer) {
-    if (src_value->stage->stage == consumer->stage->stage) {
+IRStmt* CreateNonStagedLink(IRProgram* prog, PipeStage* src_stage,
+                            IRStmt* src_value, PipeStage* consumer_stage) {
+    if (src_stage->stage == consumer_stage->stage) {
         return src_value;
     }
 
@@ -1034,8 +1035,8 @@ IRStmt* CreateKillWriteLink(IRProgram* prog, IRStmt* src_value, IRStmt* consumer
     restart_value->type = IRStmtRestartValue;
     restart_value->width = src_value->width;
     ret = restart_value.get();
-    restart_value->pipe = consumer->pipe;
-    restart_value->stage = consumer->stage;
+    restart_value->pipe = consumer_stage->pipe;
+    restart_value->stage = consumer_stage;
     restart_value->pipe->stmts.push_back(restart_value.get());
     restart_value->stage->stmts.push_back(restart_value.get());
     restart_value->stage->owned_stmts.push_back(move(restart_value));
@@ -1047,8 +1048,8 @@ IRStmt* CreateKillWriteLink(IRProgram* prog, IRStmt* src_value, IRStmt* consumer
     restart_value_src->width = src_value->width;
     restart_value_src->args.push_back(src_value);
     restart_value_src->arg_nums.push_back(src_value->valnum);
-    restart_value_src->pipe = src_value->pipe;
-    restart_value_src->stage = src_value->stage;
+    restart_value_src->pipe = src_stage->pipe;
+    restart_value_src->stage = src_stage;
     restart_value_src->pipe->stmts.push_back(restart_value_src.get());
     restart_value_src->stage->stmts.push_back(restart_value_src.get());
     restart_value_src->stage->owned_stmts.push_back(move(restart_value_src));
@@ -1259,16 +1260,19 @@ bool ConvertSingleWrites(IRProgram* program,
             sel->pipe = write_stage->pipe;
             sel->stage = write_stage;
 
-            sel->args.push_back(CreateKillWriteLink(program,
-                        p.second.stmts[i+1]->valid_in, sel.get()));
+            sel->args.push_back(CreateNonStagedLink(program,
+                        p.second.stmts[i+1]->stage,
+                        p.second.stmts[i+1]->valid_in, sel->stage));
             sel->arg_nums.push_back(sel->args.back()->valnum);
 
-            sel->args.push_back(CreateKillWriteLink(program,
-                        p.second.stmts[i+1]->args[0], sel.get()));
+            sel->args.push_back(CreateNonStagedLink(program,
+                        p.second.stmts[i+1]->stage,
+                        p.second.stmts[i+1]->args[0], sel->stage));
             sel->arg_nums.push_back(sel->args.back()->valnum);
             sel->args.push_back(last_sel ? last_sel :
-                    CreateKillWriteLink(program,
-                        p.second.stmts[i]->args[0], sel.get()));
+                    CreateNonStagedLink(program,
+                        p.second.stmts[i]->stage,
+                        p.second.stmts[i]->args[0], sel->stage));
             sel->arg_nums.push_back(sel->args.back()->valnum);
             sel->width = sel->args[1]->width;
             last_sel = sel.get();
@@ -1284,12 +1288,14 @@ bool ConvertSingleWrites(IRProgram* program,
             valid_or->pipe = write_stage->pipe;
             valid_or->stage = write_stage;
             valid_or->args.push_back(last_or ? last_or :
-                    CreateKillWriteLink(program,
-                        p.second.stmts[i]->valid_in, valid_or.get()));
+                    CreateNonStagedLink(program,
+                        p.second.stmts[i]->stage,
+                        p.second.stmts[i]->valid_in, valid_or->stage));
             valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
             valid_or->args.push_back(
-                    CreateKillWriteLink(program,
-                        p.second.stmts[i+1]->valid_in, valid_or.get()));
+                    CreateNonStagedLink(program,
+                        p.second.stmts[i+1]->stage,
+                        p.second.stmts[i+1]->valid_in, valid_or->stage));
             valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
             valid_or->width = 1;
             last_or = valid_or.get();
@@ -1361,7 +1367,10 @@ bool AssignStalls(IRProgram* program,
                     if (stmt->type == IRStmtBackedge &&
                         stmt->restart_target->restart_cond->stage->stage > i) {
                         assert(stmt->valid_in != nullptr);
-                        later_backedge_valids.push_back(stmt->valid_in);
+                        later_backedge_valids.push_back(
+                                CreateNonStagedLink(
+                                    program, later_stage,
+                                    stmt->valid_in, stage));
                     }
                 }
             }
@@ -1388,6 +1397,7 @@ bool AssignStalls(IRProgram* program,
         for (auto& stmt : stallgen_bb->stmts) {
             prior_stage->stmts.push_back(stmt.get());
             stmt->stage = prior_stage;
+            stmt->stage->pipe->stmts.push_back(stmt.get());
         }
         pipe->bbs.push_back(stallgen_bb.get());
         program->bbs.push_back(move(stallgen_bb));
@@ -1423,7 +1433,8 @@ bool AssignKills(IRProgram* program,
                 auto* later_stage = other_pipe->stages[j].get();
                 for (auto* stmt : later_stage->stmts) {
                     if (stmt->type == IRStmtKillYounger) {
-                        kill_inputs.push_back(stmt->valid_in);
+                        kill_inputs.push_back(CreateNonStagedLink(program,
+                                    later_stage, stmt->valid_in, stage));
                     }
                 }
             }
@@ -1469,6 +1480,7 @@ bool AssignKills(IRProgram* program,
                 for (auto& stmt : kill_or_bb->stmts) {
                     stmt->stage = stage;
                     stage->stmts.push_back(stmt.get());
+                    stage->pipe->stmts.push_back(stmt.get());
                 }
 
                 pipe->bbs.push_back(kill_or_bb.get());
@@ -1508,6 +1520,7 @@ bool AssignKills(IRProgram* program,
             IRStmt* not_kill = builder.AddStmt(unique_ptr<IRStmt>(new IRStmt()));
             not_kill->type = IRStmtExpr;
             not_kill->op = IRStmtOpNot;
+            not_kill->width = 1;
             not_kill->valnum = program->GetValnum();
             not_kill->bb = valid_cut_gating_bb.get();
             not_kill->args.push_back(kill_signal);
@@ -1540,6 +1553,7 @@ bool AssignKills(IRProgram* program,
             for (auto& stmt : valid_cut_gating_bb->stmts) {
                 stmt->stage = stage;
                 stage->stmts.push_back(stmt.get());
+                stage->pipe->stmts.push_back(stmt.get());
             }
             program->bbs.push_back(move(valid_cut_gating_bb));
         }

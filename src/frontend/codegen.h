@@ -260,6 +260,8 @@ class CodeGenPass : public ASTVisitorContext {
         virtual Result ModifyASTStmtExprPost(ASTRef<ASTStmtExpr>& node);
         virtual Result ModifyASTStmtNestedFuncPre(
                 ASTRef<ASTStmtNestedFunc>& node);
+        virtual Result ModifyASTStmtOnKillYoungerPre(
+                ASTRef<ASTStmtOnKillYounger>& node);
 
         // Expr codegen. Post-hook so that ops are already materialized.
         virtual Result ModifyASTExprPost(ASTRef<ASTExpr>& node);
@@ -331,6 +333,10 @@ class CodeGenPass : public ASTVisitorContext {
             // *parent* frame, i.e., the saved value, since the current curbb
             // is in ctx_.
             IRBB* last_curbb;
+
+            // Current set of OnKillYounger blocks, to be codegen'd at every
+            // killyounger up to the end of this entry function (process).
+            ASTVector<ASTStmtOnKillYounger> onkillyoungers;
         };
 
         // ------- Visitor state: --------

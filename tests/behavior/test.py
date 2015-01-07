@@ -150,7 +150,7 @@ class TestCase(object):
                     of.write("    %s = %d'd%d;\n" % (c.port, portwidth_map[c.port], c.data))
                 if c.cmdtype == TestCmd.EXPECT:
                     of.write("    if (%s != %d'd%d) begin\n" % (c.port, portwidth_map[c.port], c.data))
-                    of.write("        $display(\"Data mismatch: port %s should be %d but is %%d.\", %s);\n" %
+                    of.write("        $display(\"Data mismatch (cycle %%d): port %s should be %d but is %%d.\", cycle_counter, %s);\n" %
                                 (c.port, c.data, c.port))
                     of.write("        $display(\"FAILED.\");\n")
                     of.write("        $finish;\n")

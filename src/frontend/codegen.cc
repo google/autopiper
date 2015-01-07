@@ -214,6 +214,8 @@ CodeGenPass::ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node) {
     write_stmt->args.push_back(val);
     write_stmt->arg_nums.push_back(val->valnum);
     write_stmt->width = node->rhs->inferred_type.width;
+    write_stmt->port_default = portdef->constant;
+    write_stmt->port_has_default = portdef->has_constant;
     ctx_->AddIRStmt(ctx_->CurBB(), move(write_stmt));
     return VISIT_CONTINUE;
 }
@@ -234,6 +236,15 @@ CodeGenPass::ModifyASTStmtKillYoungerPost(
     stmt->valnum = ctx_->Valnum();
     stmt->type = IRStmtKillYounger;
     ctx_->AddIRStmt(ctx_->CurBB(), move(stmt));
+
+    // Codegen any OnKillYounger blocks.
+    ASTVisitor visitor;
+    for (auto& onkillyounger : c_.back().onkillyoungers) {
+        if (!visitor.ModifyASTStmtBlock(onkillyounger->body, this)) {
+            return VISIT_TERMINAL;
+        }
+    }
+
     return VISIT_CONTINUE;
 }
 
@@ -621,6 +632,15 @@ CodeGenPass::ModifyASTStmtNestedFuncPre(ASTRef<ASTStmtNestedFunc>& node) {
 
     // We already codegen'd the body -- don't recurse into it on this visit pass.
     return VISIT_TERMINAL;
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtOnKillYoungerPre(ASTRef<ASTStmtOnKillYounger>& node) {
+    // Clone the code block to the onkillyounger block list, but don't codegen
+    // yet.
+    auto clone = CloneAST(node.get());
+    c_.back().onkillyoungers.push_back(move(clone));
+    return VISIT_TERMINAL;  // Don't recurse.
 }
 
 // If-statement support.

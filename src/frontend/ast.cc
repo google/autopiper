@@ -303,6 +303,12 @@ AST_PRINTER(ASTStmtNestedFunc) {
     out << I(0) << ")" << endl;
 }
 
+AST_PRINTER(ASTStmtOnKillYounger) {
+    out << I(0) << "(stmt-onkillyounger " << node << endl;
+    P(node->body.get(), 1);
+    out << I(0) << ")" << endl;
+}
+
 AST_PRINTER(ASTExpr) {
     out << I(0) << "(expr " << node << " ";
     switch (node->op) {
@@ -499,6 +505,7 @@ AST_CLONE(ASTStmt) {
     SUB(stage);
     SUB(expr);
     SUB(nested);
+    SUB(onkillyounger);
     return ret;
 }
 
@@ -611,12 +618,19 @@ AST_CLONE(ASTStmtNestedFunc) {
     return ret;
 }
 
+AST_CLONE(ASTStmtOnKillYounger) {
+    SETUP(ASTStmtOnKillYounger);
+    SUB(body);
+    return ret;
+}
+
 AST_CLONE(ASTExpr) {
     SETUP(ASTExpr);
     PRIM(op);
     VEC(ops);
     SUB(ident);
     PRIM(constant);
+    PRIM(has_constant);
     PRIM(def);
     PRIM(inferred_type);
     SUB(stmt);

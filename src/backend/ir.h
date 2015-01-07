@@ -221,6 +221,7 @@ struct IRStmt {
         type = IRStmtNone;
         bb = NULL;
         port = NULL;
+        port_has_default = false;
         dom_killyounger = NULL;
         timevar = NULL;
         restart_arg = NULL;
@@ -253,6 +254,8 @@ struct IRStmt {
     std::vector<int> arg_nums;
     std::vector<std::string> target_names;
     std::string port_name;
+    bignum port_default;
+    bool port_has_default;
 
     // Filled in during lowering/timing:
     IRStmt* dom_killyounger;  // dominated by a killyounger?

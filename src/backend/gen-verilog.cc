@@ -181,7 +181,12 @@ void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
                 out_->SetVar("width", strprintf("%d", stmt->args[0]->width));
                 out_->Print("wire [$width$-1:0] $portname$;\n");
             }
-            out_->Print("assign $portname$ = $arg$;\n");
+            if (stmt->port_has_default) {
+                out_->SetVar("default", string(stmt->port_default)); 
+                out_->Print("assign $portname$ = $predicate$ ? $arg$ : $default$;\n");
+            } else {
+                out_->Print("assign $portname$ = $arg$;\n");
+            }
             break;
 
         case IRStmtPortExport:

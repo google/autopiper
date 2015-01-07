@@ -77,6 +77,7 @@ struct ASTStmtTiming;
 struct ASTStmtStage;
 struct ASTStmtExpr;
 struct ASTStmtNestedFunc;
+struct ASTStmtOnKillYounger;
 
 struct ASTExpr;
 
@@ -184,6 +185,7 @@ struct ASTStmt : public ASTBase {
     ASTRef<ASTStmtStage> stage;
     ASTRef<ASTStmtExpr> expr;
     ASTRef<ASTStmtNestedFunc> nested;
+    ASTRef<ASTStmtOnKillYounger> onkillyounger;
 };
 
 struct ASTStmtExpr : public ASTBase {
@@ -266,6 +268,10 @@ struct ASTStmtNestedFunc : public ASTBase {
     ASTRef<ASTStmtBlock> body;
 };
 
+struct ASTStmtOnKillYounger : public ASTBase {
+    ASTRef<ASTStmtBlock> body;
+};
+
 struct ASTExpr : public ASTBase {
     enum Op {
         ADD,
@@ -323,6 +329,7 @@ struct ASTExpr : public ASTBase {
     ASTVector<ASTExpr> ops;
     ASTRef<ASTIdent> ident;
     ASTBignum constant;
+    bool has_constant;
 
     ASTStmtLet* def; // for VAR nodes; connected during VarScopePass
 
@@ -332,7 +339,7 @@ struct ASTExpr : public ASTBase {
 
     ASTRef<ASTType> cast_type;
 
-    ASTExpr() : op(CONST), def(nullptr)  {}
+    ASTExpr() : op(CONST), has_constant(false), def(nullptr)  {}
     ASTExpr(ASTBignum constant_)
         : ASTExpr()
     { constant = constant_; }
@@ -378,6 +385,7 @@ AST_METHODS(ASTStmtTiming);
 AST_METHODS(ASTStmtStage);
 AST_METHODS(ASTStmtExpr);
 AST_METHODS(ASTStmtNestedFunc);
+AST_METHODS(ASTStmtOnKillYounger);
 AST_METHODS(ASTExpr);
 AST_METHODS(ASTTypeField);
 AST_METHODS(ASTPragma);

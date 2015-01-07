@@ -166,7 +166,7 @@ bool ComputeKillyoungerDom(IRProgram* program,
         // scan forward to propagate dom-killyounger.
         IRStmt* dom = join;
         for (auto& stmt : bb->stmts) {
-            stmt->dom_killyounger = join;
+            stmt->dom_killyounger = dom;
             if (stmt->type == IRStmtKillYounger) dom = stmt.get();
         }
 
@@ -1021,17 +1021,61 @@ bool InsertKillIfKills(IRProgram* program,
     return true;
 }
 
+// Creates a RestartValue / RestartValueSrc pair to port a signal across
+// stages.
+IRStmt* CreateKillWriteLink(IRProgram* prog, IRStmt* src_value, IRStmt* consumer) {
+    if (src_value->stage->stage == consumer->stage->stage) {
+        return src_value;
+    }
+
+    IRStmt* ret;
+    unique_ptr<IRStmt> restart_value(new IRStmt());
+    restart_value->valnum = prog->GetValnum();
+    restart_value->type = IRStmtRestartValue;
+    restart_value->width = src_value->width;
+    ret = restart_value.get();
+    restart_value->pipe = consumer->pipe;
+    restart_value->stage = consumer->stage;
+    restart_value->pipe->stmts.push_back(restart_value.get());
+    restart_value->stage->stmts.push_back(restart_value.get());
+    restart_value->stage->owned_stmts.push_back(move(restart_value));
+
+    unique_ptr<IRStmt> restart_value_src(new IRStmt());
+    ret->restart_arg = restart_value_src.get();
+    restart_value_src->valnum = prog->GetValnum();
+    restart_value_src->type = IRStmtRestartValueSrc;
+    restart_value_src->width = src_value->width;
+    restart_value_src->args.push_back(src_value);
+    restart_value_src->arg_nums.push_back(src_value->valnum);
+    restart_value_src->pipe = src_value->pipe;
+    restart_value_src->stage = src_value->stage;
+    restart_value_src->pipe->stmts.push_back(restart_value_src.get());
+    restart_value_src->stage->stmts.push_back(restart_value_src.get());
+    restart_value_src->stage->owned_stmts.push_back(move(restart_value_src));
+
+
+    return ret;
+}
+
 bool ConvertSingleWrites(IRProgram* program,
                          PipeSys* sys,
                          ErrorCollector* coll) {
 
     struct WrittenObj {
-        int stage;
+        int stage;  // stage for all ops not dom'd by a killyounger.
+        int earliest_killstage; // earliest stage of op dom'd by a killyounger.
         IRPort* port;
         IRStorage* storage;
         vector<IRStmt*> stmts;
 
-        WrittenObj() : stage(-1), port(nullptr), storage(nullptr) {}
+        PipeStage* write_stage;
+        IRStmt* one_write;
+
+        WrittenObj()
+            : stage(-1), earliest_killstage(-1),
+              port(nullptr), storage(nullptr),
+              write_stage(nullptr)
+        {}
     };
 
     map<void*, WrittenObj> written_objs;
@@ -1066,26 +1110,83 @@ bool ConvertSingleWrites(IRProgram* program,
                 // compare stage number (verify it's the same as other writers)
                 // and add ourselves to the list of writers.
                 if (it != written_objs.end()) {
-                    if (stmt->stage->stage != it->second.stage) {
-                        coll->ReportError(stmt->location, ErrorCollector::ERROR,
-                                strprintf(
-                                    "Write to port/chan/reg %s occurs in stage "
-                                    "%d and %d. All writes must be in one stage.",
-                                    name,
-                                    stmt->stage->stage, it->second.stage));
-                        return false;
+                    if (!stmt->dom_killyounger ||
+                         stmt->dom_killyounger->stage->stage != stmt->stage->stage) {
+                        if (it->second.stage != -1 &&
+                            stmt->stage->stage != it->second.stage) {
+                            coll->ReportError(stmt->location, ErrorCollector::ERROR,
+                                    strprintf(
+                                        "Write to port/chan/reg %s occurs in stage "
+                                        "%d and %d. All writes must be in one stage.",
+                                        name,
+                                        stmt->stage->stage, it->second.stage));
+                            return false;
+                        } else if (it->second.stage == -1) {
+                            it->second.stage = stmt->stage->stage;
+                            it->second.write_stage = stmt->stage;
+                            it->second.one_write = stmt;
+                        }
+                    } else {
+                        if (it->second.earliest_killstage == -1) {
+                            it->second.earliest_killstage = stmt->stage->stage;
+                            if (!it->second.write_stage) {
+                                it->second.write_stage = stmt->stage;
+                                it->second.one_write = stmt;
+                            }
+                        } else if (stmt->stage->stage < it->second.earliest_killstage) {
+                            it->second.earliest_killstage = stmt->stage->stage;
+                            if (!it->second.write_stage) {
+                                it->second.write_stage = stmt->stage;
+                                it->second.one_write = stmt;
+                            }
+                        }
                     }
-
                     it->second.stmts.push_back(stmt);
                 } else {
                     WrittenObj record;
-                    record.stage = stmt->stage->stage;
+                    if (stmt->dom_killyounger &&
+                        stmt->dom_killyounger->stage->stage == stmt->stage->stage) {
+                        record.earliest_killstage = stmt->stage->stage;
+                    } else {
+                        record.stage = stmt->stage->stage;
+                    }
+                    record.write_stage = stmt->stage;
+                    record.one_write = stmt;
                     record.port = port;
                     record.storage = storage;
                     record.stmts.push_back(stmt);
                     written_objs.insert(make_pair(written_obj, record));
                 }
             }
+        }
+    }
+
+    // Check that any writes dom'd by a killyounger occur in the same or later
+    // stage as any writes not dom'd by a killyounger. The rationale here is
+    // that we allow such writes (call them "killing writes") to come in later
+    // stages because they will kill the valids on all writes in the nominal
+    // write stage. For example, a reg may normally be written in stage 2, but
+    // a killyounger/restart late in the pipe (stage 10, say) resets its value.
+    // These killing writes are also exempt from the predicate-overlap check.
+    // However, we *don't* need to treat them specially during the
+    // written-value priority / selection logic, because (as mentioned) these
+    // killing writes kill valids on all the writes in the nominal stage, and
+    // kill the killing writes in earlier stages as well. (If there's more than
+    // one killing write in the same stage that activates at the same time,
+    // that's undefined behavior. TODO: maybe we should check that killyoungers
+    // in the same stage after lowering don't have overlapping predicates.)
+    for (auto& p : written_objs) {
+        if (p.second.earliest_killstage != -1 &&
+            p.second.stage != -1 &&
+            p.second.earliest_killstage < p.second.stage) {
+            coll->ReportError(p.second.stmts[0]->location, ErrorCollector::ERROR,
+                    "The earliest write to port/chan/reg that is a 'killing write' "
+                    "(a write dominated by a killyounger in the same stage) comes "
+                    "before the nominal write stage (stage where all non-killing "
+                    "writes occur) for this port/chan/reg. This is an error because "
+                    "killing writes override the nominally-written value but this "
+                    "killing write does not kill the ordinary writes.");
+            return false;
         }
     }
 
@@ -1125,6 +1226,11 @@ bool ConvertSingleWrites(IRProgram* program,
         for (auto* stmt : p.second.stmts) {
             for (auto* other : p.second.stmts) {
                 if (stmt == other) continue;
+                if ((stmt->dom_killyounger &&
+                     stmt->dom_killyounger->stage->stage == stmt->stage->stage) ||
+                    (other->dom_killyounger &&
+                     other->dom_killyounger->stage->stage == other->stage->stage))
+                    continue;
                 if (!stmt->valid_in_pred.AndWith(
                             other->valid_in_pred).IsFalse()) {
                     coll->ReportError(other->location, ErrorCollector::ERROR,
@@ -1141,6 +1247,7 @@ bool ConvertSingleWrites(IRProgram* program,
     // sequence of select operations and rewrite the source of the write.
     for (auto& p : written_objs) {
         if (p.second.stmts.size() < 2) continue;
+        PipeStage* write_stage = p.second.write_stage;
         // Wire up the sels and valid-signal combining ORs.
         IRStmt* last_sel = nullptr;
         IRStmt* last_or = nullptr;
@@ -1149,44 +1256,52 @@ bool ConvertSingleWrites(IRProgram* program,
             sel->valnum = program->GetValnum();
             sel->type = IRStmtExpr;
             sel->op = IRStmtOpSelect;
-            sel->pipe = p.second.stmts[i]->pipe;
-            sel->stage = p.second.stmts[i]->stage;
+            sel->pipe = write_stage->pipe;
+            sel->stage = write_stage;
 
-            sel->args.push_back(p.second.stmts[i+1]->valid_in);
+            sel->args.push_back(CreateKillWriteLink(program,
+                        p.second.stmts[i+1]->valid_in, sel.get()));
             sel->arg_nums.push_back(sel->args.back()->valnum);
 
-            sel->args.push_back(p.second.stmts[i+1]->args[0]);
+            sel->args.push_back(CreateKillWriteLink(program,
+                        p.second.stmts[i+1]->args[0], sel.get()));
             sel->arg_nums.push_back(sel->args.back()->valnum);
-            sel->args.push_back(last_sel ? last_sel : p.second.stmts[i]->args[0]);
+            sel->args.push_back(last_sel ? last_sel :
+                    CreateKillWriteLink(program,
+                        p.second.stmts[i]->args[0], sel.get()));
             sel->arg_nums.push_back(sel->args.back()->valnum);
             sel->width = sel->args[1]->width;
             last_sel = sel.get();
 
-            p.second.stmts[i]->pipe->stmts.push_back(sel.get());
-            p.second.stmts[i]->stage->stmts.push_back(sel.get());
-            p.second.stmts[i]->bb->stmts.push_back(move(sel));
+            sel->pipe->stmts.push_back(sel.get());
+            sel->stage->stmts.push_back(sel.get());
+            sel->stage->owned_stmts.push_back(move(sel));
 
             unique_ptr<IRStmt> valid_or(new IRStmt());
             valid_or->valnum = program->GetValnum();
             valid_or->type = IRStmtExpr;
             valid_or->op = IRStmtOpOr;
-            valid_or->pipe = p.second.stmts[i]->pipe;
-            valid_or->stage = p.second.stmts[i]->stage;
-            valid_or->args.push_back(last_or ? last_or : p.second.stmts[i]->valid_in);
+            valid_or->pipe = write_stage->pipe;
+            valid_or->stage = write_stage;
+            valid_or->args.push_back(last_or ? last_or :
+                    CreateKillWriteLink(program,
+                        p.second.stmts[i]->valid_in, valid_or.get()));
             valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
-            valid_or->args.push_back(p.second.stmts[i+1]->valid_in);
+            valid_or->args.push_back(
+                    CreateKillWriteLink(program,
+                        p.second.stmts[i+1]->valid_in, valid_or.get()));
             valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
             valid_or->width = 1;
             last_or = valid_or.get();
 
-            p.second.stmts[i]->pipe->stmts.push_back(valid_or.get());
-            p.second.stmts[i]->stage->stmts.push_back(valid_or.get());
-            p.second.stmts[i]->bb->stmts.push_back(move(valid_or));
+            valid_or->pipe->stmts.push_back(valid_or.get());
+            valid_or->stage->stmts.push_back(valid_or.get());
+            valid_or->stage->owned_stmts.push_back(move(valid_or));
         }
 
         // Rewrite the first write's arg, and replace its 'valid_in' with the
         // OR of all.
-        IRStmt* one_write = p.second.stmts.back();
+        IRStmt* one_write = p.second.one_write;
         one_write->valid_in = last_or;
         one_write->args[0] = last_sel;
         one_write->arg_nums[0] = last_sel->valnum;
@@ -1374,6 +1489,8 @@ bool AssignKills(IRProgram* program,
             for (auto* stmt : stage->stmts) {
                 if (stmt->valid_in && stmt->valid_in->stage->stage < i) {
                     valid_cut.insert(stmt->valid_in);
+                } else if (stmt->is_valid_start) {
+                    valid_cut.insert(stmt);
                 }
                 if (stmt->valid_spine) {
                     for (auto* arg : stmt->args) {

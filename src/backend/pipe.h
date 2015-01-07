@@ -76,6 +76,9 @@ struct PipeStage {
     // kill_if condition clone insertion.
     std::vector<IRStmt*> kills;
 
+    // Extra statements added after lowering, owned directly by the stage.
+    std::vector<std::unique_ptr<IRStmt>> owned_stmts;
+
     Pipe* pipe;
 };
 

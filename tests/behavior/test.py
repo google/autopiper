@@ -138,6 +138,9 @@ class TestCase(object):
 
             cur_cycle = 0
             of.write("initial begin\n")
+            for (port, width) in portwidths:
+                if port_written[port]:
+                    of.write("    %s = %d'd0;\n" % (port, width))
             of.write("    reset = 1; #5; reset = 0; #5;\n")
             for c in self.testcmds:
                 if c.cmdtype == TestCmd.CYCLE:

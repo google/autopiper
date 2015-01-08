@@ -2,6 +2,7 @@
 #test: port test_output 32
 #test: port test_output2 32
 #test: port killport 32
+#test: port stage1_valid 1
 
 #test: cycle 1
 #test: write test_input 1
@@ -27,6 +28,7 @@ func entry main () : void {
     let p : port int32 = port "test_output";
     let p2 : port int32 = port "test_output2";
     let killport : port int32 = port "killport" default 0;
+    let stage1_valid : port bool = port "stage1_valid" default 0;
 
     timing {
         stage 0;
@@ -35,6 +37,7 @@ func entry main () : void {
         onkillyounger { write killport, 1; }
 
         stage 1;
+        write stage1_valid, 1;
         write p2, x;
         if (x == 42) killyounger;
     }

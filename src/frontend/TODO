@@ -1,12 +1,5 @@
 - Bypass values
   - prepare, provide, unprovide, ask, askvalue (with index match)
-- onkillyounger and support in the backend
-  - codegen'd once per killyounger, inserted into the BB immediately after the
-    killyounger.
-  - special flag set on port writes and reg writes that exempt them from
-    same-stage and disjoint-predicates checks.
-- port default value that's set if no write occurs. (If no default, the port
-  output value is unspecified if no write occurs for a given invocation.)
 
 OoO-decomposed-as-macros:
 - transactional state macros (or primitives?)

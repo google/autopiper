@@ -6,7 +6,7 @@ import sys
 import tempfile
 import subprocess
 
-VERBOSE = 0
+VERBOSE = 1
 
 def run(exe, args):
     sub = subprocess.Popen(executable = exe, args = args,

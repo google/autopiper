@@ -212,6 +212,57 @@ bool DeriveStorageSize(IRStorage* storage, ErrorCollector* collector) {
     return true;
 }
 
+bool DeriveBypassSize(IRBypass* bypass, ErrorCollector* collector) {
+    if (!bypass->start || !bypass->end || bypass->writes.empty()) {
+        Location loc;
+        collector->ReportError(loc, ErrorCollector::ERROR,
+                strprintf("Bypass '%s' is missing one or more of: start, end, write",
+                    bypass->name.c_str()));
+        return false;
+    }
+
+    int width = -1;
+    for (auto* write : bypass->writes) {
+        if (write->args[0]->width != write->width) {
+            collector->ReportError(write->location, ErrorCollector::ERROR,
+                    "Write width does not match arg width");
+            return false;
+        }
+        if (width != -1 && write->width != width) {
+            collector->ReportError(write->location, ErrorCollector::ERROR,
+                    "Inconsistent width for writes on bypass network");
+            return false;
+        }
+        width = write->width;
+    }
+
+    bypass->width = width;
+
+    for (auto* read : bypass->reads) {
+        int expected_width = -1;
+        switch (read->type) {
+            case IRStmtBypassRead:
+                expected_width = width;
+                break;
+            case IRStmtBypassPresent:
+            case IRStmtBypassReady:
+                expected_width = 1;
+                break;
+            default:
+                assert(false);
+                break;
+        }
+
+        if (read->width != expected_width) {
+            collector->ReportError(read->location, ErrorCollector::ERROR,
+                    "Read width does not match bypass-network width (or 1, for 'ask')");
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool CheckStmtWidthMatchesArgs(IRStmt* stmt, ErrorCollector* collector) {
     for (auto* arg : stmt->args) {
         if (arg->width != stmt->width) {
@@ -372,14 +423,13 @@ bool CheckStmtWidth(IRStmt* stmt, ErrorCollector* collector) {
         case IRStmtRegWrite:
         case IRStmtArrayRead:
         case IRStmtArrayWrite:
+        case IRStmtBypassStart:
+        case IRStmtBypassEnd:
+        case IRStmtBypassWrite:
+        case IRStmtBypassPresent:
+        case IRStmtBypassReady:
+        case IRStmtBypassRead:
             // Already checked.
-            break;
-
-        case IRStmtProvide:
-        case IRStmtUnprovide:
-        case IRStmtAsk:
-            // TODO
-            assert(false);
             break;
 
         case IRStmtSpawn:
@@ -576,6 +626,9 @@ bool IRProgram::Typecheck(ErrorCollector* collector) {
     }
     for (auto& s : storage) {
         if (!DeriveStorageSize(s.get(), collector)) return false;
+    }
+    for (auto& b : bypasses) {
+        if (!DeriveBypassSize(b.get(), collector)) return false;
     }
     for (auto& bb : bbs) {
         if (!CheckBB(bb.get(), collector)) return false;

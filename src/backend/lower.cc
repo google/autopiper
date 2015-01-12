@@ -1370,7 +1370,7 @@ bool AssignStalls(IRProgram* program,
                         later_backedge_valids.push_back(
                                 CreateNonStagedLink(
                                     program, later_stage,
-                                    stmt->valid_in, stage));
+                                    stmt->valid_in, pipe->stages[i-1].get()));
                     }
                 }
             }
@@ -1398,6 +1398,7 @@ bool AssignStalls(IRProgram* program,
             prior_stage->stmts.push_back(stmt.get());
             stmt->stage = prior_stage;
             stmt->stage->pipe->stmts.push_back(stmt.get());
+            stmt->pipe = stmt->stage->pipe;
         }
         pipe->bbs.push_back(stallgen_bb.get());
         program->bbs.push_back(move(stallgen_bb));
@@ -1552,10 +1553,151 @@ bool AssignKills(IRProgram* program,
             builder.PrependToBB();
             for (auto& stmt : valid_cut_gating_bb->stmts) {
                 stmt->stage = stage;
+                stmt->pipe = stage->pipe;
                 stage->stmts.push_back(stmt.get());
                 stage->pipe->stmts.push_back(stmt.get());
             }
             program->bbs.push_back(move(valid_cut_gating_bb));
+        }
+    }
+
+    return true;
+}
+
+bool ConvertBypasses(IRProgram* program,
+                     PipeSys* sys,
+                     ErrorCollector* coll) {
+    // Find all bypass networks in this pipesys.
+    vector<IRBypass*> bypasses;
+    for (auto& pipe : sys->pipes) {
+        for (auto* stmt : pipe->stmts) {
+            if (stmt->type == IRStmtBypassStart) {
+                bypasses.push_back(stmt->bypass);
+            }
+        }
+    }
+
+    // Check that all bypass ops ended up in the same PipeSys.
+    for (auto* bypass : bypasses) {
+        if (bypass->start->pipe->sys != sys) {
+            coll->ReportError(bypass->start->location, ErrorCollector::ERROR,
+                    strprintf("Bypass network '%s' has bypass-start in wrong "
+                              "pipesys", bypass->name.c_str()));
+            return false;
+        }
+        if (bypass->end->pipe->sys != sys) {
+            coll->ReportError(bypass->end->location, ErrorCollector::ERROR,
+                    strprintf("Bypass network '%s' has bypass-end in wrong "
+                              "pipesys", bypass->name.c_str()));
+            return false;
+        }
+        for (auto* write : bypass->writes) {
+            if (write->pipe->sys != sys) {
+                coll->ReportError(write->location, ErrorCollector::ERROR,
+                        strprintf("Bypass network '%s' has bypass-write in wrong "
+                                  "pipesys", bypass->name.c_str()));
+                return false;
+            }
+        }
+        for (auto* read : bypass->reads) {
+            if (read->pipe->sys != sys) {
+                coll->ReportError(read->location, ErrorCollector::ERROR,
+                        strprintf("Bypass network '%s' has bypass-read in wrong "
+                                  "pipesys", bypass->name.c_str()));
+                return false;
+            }
+        }
+
+        // Set up the 'bypass start' value as a bypass lane that's passed down
+        // through pipeline stages. We do this by making it (data_width +
+        // index_width + 1 + 1) bits wide: it carries the bypassed value, if any,
+        // plus the bypassed value's index, plus a 'valid' bit for the index
+        // and a 'valid' bit for the data. Verilog generation handles these
+        // details manually, but setting the correct width here ensures that
+        // the staging latches are created correctly.
+        bypass->start->width = (bypass->start->width /* data */ +
+                                1 /* data valid bit */ +
+                                bypass->start->args[0]->width /* index */ +
+                                1 /* index valid bit */);
+
+        // Group bypass writes by stage.
+        map<int, vector<IRStmt*>> writes_by_stage;
+        for (auto* write : bypass->writes) {
+            writes_by_stage[write->stage->stage].push_back(write);
+        }
+
+        // Join bypass writes in the same stage into one bypass write.
+        for (auto& p : writes_by_stage) {
+            int stage = p.first;
+            auto& writes = p.second;
+            if (writes.size() > 1) {
+                auto* master_write = writes[0];
+
+                IRStmt* last_sel = nullptr;
+                IRStmt* last_or = nullptr;
+                for (unsigned i = 0; i < writes.size() - 1; i++) {
+                    auto* write1 = writes[i];
+                    auto* write2 = writes[i+1];
+
+                    unique_ptr<IRStmt> sel(new IRStmt());
+                    sel->valnum = program->GetValnum();
+                    sel->type = IRStmtExpr;
+                    sel->op = IRStmtOpSelect;
+                    sel->pipe = write1->pipe;
+                    sel->stage = write1->stage;
+
+                    sel->args.push_back(CreateNonStagedLink(program,
+                                write2->stage, write2->valid_in, sel->stage));
+                    sel->arg_nums.push_back(sel->args.back()->valnum);
+
+                    sel->args.push_back(CreateNonStagedLink(program,
+                                write2->stage, write2->args[0], sel->stage));
+                    sel->arg_nums.push_back(sel->args.back()->valnum);
+                    sel->args.push_back(last_sel ? last_sel :
+                            CreateNonStagedLink(program,
+                                write1->stage, write1->args[0], sel->stage));
+                    sel->arg_nums.push_back(sel->args.back()->valnum);
+                    sel->width = sel->args[1]->width;
+                    last_sel = sel.get();
+
+                    sel->pipe->stmts.push_back(sel.get());
+                    sel->stage->stmts.push_back(sel.get());
+                    sel->stage->owned_stmts.push_back(move(sel));
+
+                    unique_ptr<IRStmt> valid_or(new IRStmt());
+                    valid_or->valnum = program->GetValnum();
+                    valid_or->type = IRStmtExpr;
+                    valid_or->op = IRStmtOpOr;
+                    valid_or->pipe = write1->pipe;
+                    valid_or->stage = write1->stage;
+                    valid_or->args.push_back(last_or ? last_or :
+                            CreateNonStagedLink(program,
+                                write1->stage, write1->valid_in, valid_or->stage));
+                    valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
+                    valid_or->args.push_back(
+                            CreateNonStagedLink(program,
+                                write2->stage, write2->valid_in, valid_or->stage));
+                    valid_or->arg_nums.push_back(valid_or->args.back()->valnum);
+                    valid_or->width = 1;
+                    last_or = valid_or.get();
+
+                    valid_or->pipe->stmts.push_back(valid_or.get());
+                    valid_or->stage->stmts.push_back(valid_or.get());
+                    valid_or->stage->owned_stmts.push_back(move(valid_or));
+                }
+
+                master_write->args[0] = last_sel;
+                master_write->valid_in = last_sel;
+
+                for (unsigned i = 1; i < writes.size(); i++) {
+                    writes[i]->deleted = true;
+                }
+
+                writes.resize(1);
+            }
+
+            assert(writes.size() == 1);
+            bypass->writes_by_stage[stage] = writes[0];
         }
     }
 
@@ -1628,6 +1770,9 @@ vector<unique_ptr<PipeSys>> IRProgram::Lower(ErrorCollector* coll) {
         // with a muxed input. (We check that valids do not overlap.)
         if (!ConvertSingleWrites(this, sys.get(), coll)) goto err;
 
+        // Check bypasses and convert writes to a single write per stage.
+        if (!ConvertBypasses(this, sys.get(), coll)) goto err;
+
         for (auto& pipe : sys->pipes) {
 
             // TODO: check here for 'can only be killed if killyounger' markers
@@ -1647,6 +1792,7 @@ vector<unique_ptr<PipeSys>> IRProgram::Lower(ErrorCollector* coll) {
             // RestartValueSrc and RestartValue.
             if (!AssignKills(this, sys.get(), pipe.get(), coll)) goto err;
         }
+
 
         continue;
 err:

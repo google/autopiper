@@ -554,6 +554,48 @@ CodeGenPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
                 ctx_->AddIRStmt(ctx_->CurBB(), move(reg_read), node.get());
                 break;
             }
+            case ASTExpr::BYPASSDEF:
+                // Generate a name for this bypass network.
+                node->ident.reset(new ASTIdent());
+                node->ident->name = ctx_->GenSym("bypass");
+                break;
+
+            case ASTExpr::BYPASSPRESENT:
+            case ASTExpr::BYPASSREADY:
+            case ASTExpr::BYPASSREAD: {
+                const ASTExpr* bypassdef = FindEntityDef(
+                        node->ops[0].get(), ASTExpr::BYPASSDEF, node.get());
+                if (!bypassdef) {
+                    return VISIT_END;
+                }
+
+                unique_ptr<IRStmt> bypassop(new IRStmt());
+                switch (node->op) {
+                    case ASTExpr::BYPASSPRESENT:
+                        bypassop->type = IRStmtBypassPresent;
+                        break;
+                    case ASTExpr::BYPASSREADY:
+                        bypassop->type = IRStmtBypassReady;
+                        break;
+                    case ASTExpr::BYPASSREAD:
+                        bypassop->type = IRStmtBypassRead;
+                        break;
+                    default:
+                        assert(false);
+                        break;
+                }
+                bypassop->valnum = ctx_->Valnum();
+                bypassop->width = node->inferred_type.width;
+                bypassop->port_name = bypassdef->ident->name;
+
+                IRStmt* index_arg = ctx_->GetIRStmt(node->ops[1].get());
+                bypassop->args.push_back(index_arg);
+                bypassop->arg_nums.push_back(index_arg->valnum);
+
+                ctx_->AddIRStmt(ctx_->CurBB(), move(bypassop), node.get());
+                break;
+            }
+
             case ASTExpr::STMTBLOCK: {
                 // the block will have already been codegen'd during visit,
                 // since we're in a post-hook, so we merely have to find the
@@ -641,6 +683,58 @@ CodeGenPass::ModifyASTStmtOnKillYoungerPre(ASTRef<ASTStmtOnKillYounger>& node) {
     auto clone = CloneAST(node.get());
     c_.back().onkillyoungers.push_back(move(clone));
     return VISIT_TERMINAL;  // Don't recurse.
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtBypassStartPost(ASTRef<ASTStmtBypassStart>& node) {
+    unique_ptr<IRStmt> bypass_stmt(new IRStmt());
+    bypass_stmt->valnum = ctx_->Valnum();
+    const ASTExpr* bypassdef = FindEntityDef(
+            node->bypass.get(), ASTExpr::BYPASSDEF, node->bypass.get());
+    if (!bypassdef) {
+        return VISIT_END;
+    }
+    bypass_stmt->type = IRStmtBypassStart;
+    bypass_stmt->port_name = bypassdef->ident->name;
+    IRStmt* index_arg = ctx_->GetIRStmt(node->index.get());
+    bypass_stmt->args.push_back(index_arg);
+    bypass_stmt->arg_nums.push_back(index_arg->valnum);
+    ctx_->AddIRStmt(ctx_->CurBB(), move(bypass_stmt));
+    return VISIT_CONTINUE;
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtBypassEndPost(ASTRef<ASTStmtBypassEnd>& node) {
+    unique_ptr<IRStmt> bypass_stmt(new IRStmt());
+    bypass_stmt->valnum = ctx_->Valnum();
+    const ASTExpr* bypassdef = FindEntityDef(
+            node->bypass.get(), ASTExpr::BYPASSDEF, node->bypass.get());
+    if (!bypassdef) {
+        return VISIT_END;
+    }
+    bypass_stmt->type = IRStmtBypassEnd;
+    bypass_stmt->port_name = bypassdef->ident->name;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(bypass_stmt));
+    return VISIT_CONTINUE;
+}
+
+CodeGenPass::Result
+CodeGenPass::ModifyASTStmtBypassWritePost(ASTRef<ASTStmtBypassWrite>& node) {
+    unique_ptr<IRStmt> bypass_stmt(new IRStmt());
+    bypass_stmt->valnum = ctx_->Valnum();
+    const ASTExpr* bypassdef = FindEntityDef(
+            node->bypass.get(), ASTExpr::BYPASSDEF, node->bypass.get());
+    if (!bypassdef) {
+        return VISIT_END;
+    }
+    bypass_stmt->type = IRStmtBypassWrite;
+    bypass_stmt->port_name = bypassdef->ident->name;
+    IRStmt* value_arg = ctx_->GetIRStmt(node->value.get());
+    bypass_stmt->args.push_back(value_arg);
+    bypass_stmt->arg_nums.push_back(value_arg->valnum);
+    bypass_stmt->width = value_arg->width;
+    ctx_->AddIRStmt(ctx_->CurBB(), move(bypass_stmt));
+    return VISIT_CONTINUE;
 }
 
 // If-statement support.

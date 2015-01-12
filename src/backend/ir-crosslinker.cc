@@ -114,6 +114,35 @@ bool GetStorageMap(IRProgram* program,
     return true;
 }
 
+typedef map<string, vector<IRStmt*>> BypassMap;
+
+bool GetBypassMap(IRProgram* program,
+                  BypassMap* m,
+                  ErrorCollector* collector) {
+    for (auto& bb : program->bbs) {
+        for (auto& stmt : bb->stmts) {
+            switch (stmt->type) {
+                case IRStmtBypassStart:
+                case IRStmtBypassEnd:
+                case IRStmtBypassPresent:
+                case IRStmtBypassReady:
+                case IRStmtBypassRead:
+                case IRStmtBypassWrite:
+                    if (stmt->port_name == "") {
+                        collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                                "Empty bypass-network name");
+                        return false;
+                    }
+                    (*m)[stmt->port_name].push_back(stmt.get());
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+    return true;
+}
+
 bool LinkStmts(IRProgram* program,
                BBMap& targets,
                ValnumMap& valnums,
@@ -205,6 +234,57 @@ bool CreateStorage(IRProgram* program,
     return true;
 }
 
+bool CreateBypass(IRProgram* program,
+                  const BypassMap& m,
+                  ErrorCollector* collector) {
+    for (auto& pair : m ) {
+        auto bypassname = pair.first;
+        auto stmts = pair.second;
+        unique_ptr<IRBypass> bypass(new IRBypass());
+        bypass->name = bypassname;
+        for (auto* stmt : stmts) {
+            switch (stmt->type) {
+                case IRStmtBypassStart:
+                    if (bypass->start) {
+                        collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                                strprintf(
+                                    "More than one 'start' statement on bypass network '%s'",
+                                    bypassname.c_str()));
+                        return false;
+                    }
+                    bypass->start = stmt;
+                    stmt->bypass = bypass.get();
+                    break;
+                case IRStmtBypassEnd:
+                    if (bypass->end) {
+                        collector->ReportError(stmt->location, ErrorCollector::ERROR,
+                                strprintf(
+                                    "More than one 'end' statement on bypass network '%s'",
+                                    bypassname.c_str()));
+                        return false;
+                    }
+                    bypass->end = stmt;
+                    stmt->bypass = bypass.get();
+                    break;
+                case IRStmtBypassWrite:
+                    bypass->writes.push_back(stmt);
+                    stmt->bypass = bypass.get();
+                    break;
+                case IRStmtBypassPresent:
+                case IRStmtBypassReady:
+                case IRStmtBypassRead:
+                    bypass->reads.push_back(stmt);
+                    stmt->bypass = bypass.get();
+                    break;
+                default:
+                    break;
+            }
+        }
+        program->bypasses.push_back(move(bypass));
+    }
+    return true;
+}
+
 }  // anonymous namespace
 
 bool IRProgram::Crosslink(ErrorCollector* collector) {
@@ -225,6 +305,10 @@ bool IRProgram::Crosslink(ErrorCollector* collector) {
     StorageMap storagemap;
     if (!GetStorageMap(this, &storagemap, collector)) return false;
     if (!CreateStorage(this, storagemap, collector)) return false;
+
+    BypassMap bypassmap;
+    if (!GetBypassMap(this, &bypassmap, collector)) return false;
+    if (!CreateBypass(this, bypassmap, collector)) return false;
 
     return true;
 }

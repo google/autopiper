@@ -1,0 +1,95 @@
+#test: port srcA 4
+#test: port srcB 4
+#test: port dest 4
+#test: port imm 32
+#test: port data_out 32
+#test: port srcA_in_stage1 4
+#test: port srcB_in_stage1 4
+
+#test: cycle 1
+#test: write srcA 0
+#test: write srcB 0
+#test: write dest 1
+#test: write imm 42
+
+#test: cycle 2
+#test: write srcA 1
+#test: write srcB 3
+#test: write dest 2
+#test: write imm 0
+
+#test: cycle 3
+#test: write srcA 1
+#test: write srcB 0
+#test: write dest 3
+#test: write imm 0
+
+#test: cycle 4
+#test: write srcA 2
+#test: write srcB 3
+#test: write dest 4
+#test: write imm 1
+
+#test: cycle 5
+#test: write srcA 3
+#test: write srcB 4
+#test: write dest 5
+#test: write imm 0
+
+#test: cycle 6
+#test: write srcA 0
+#test: write srcB 0
+#test: write dest 0
+#test: write imm 0
+
+func entry main() : void {
+    let byp : bypass int32 = bypass;
+    let RF : int32[16] = array;
+
+    let srcA_in : port int_4 = port "srcA";
+    let srcB_in : port int_4 = port "srcB";
+    let dest_in : port int_4 = port "dest";
+    let imm_in  : port int32 = port "imm";
+    let data_out : port int32 = port "data_out";
+    let srcA_in_stage1 : port int_4 = port "srcA_in_stage1";
+    let srcB_in_stage1 : port int_4 = port "srcB_in_stage1";
+
+    timing {
+        stage 0;
+        let sa = read srcA_in;
+        let sb = read srcB_in;
+        let d = read dest_in;
+        let imm = read imm_in;
+
+        stage 1;
+        let A = RF[sa];
+        let B = RF[sb];
+
+        bypassstart byp, d;
+
+        while ((bypasspresent byp, sa) & ~(bypassready byp, sa)) {}
+        while ((bypasspresent byp, sb) & ~(bypassready byp, sb)) {}
+        write srcA_in_stage1, sa;
+        write srcB_in_stage1, sb;
+
+        if (bypassready byp, sa)
+            A = bypassread byp, sa;
+        if (bypassready byp, sb)
+            B = bypassread byp, sb;
+
+        stage 2;
+        let sum = A + B;
+        if (imm == 0)
+            bypasswrite byp, sum;
+
+        stage 3;
+        let sum2 = sum + imm;
+        bypasswrite byp, sum2;
+
+        stage 4;
+        RF[d] = sum2;
+        bypassend byp;
+
+        write data_out, sum2;
+    }
+}

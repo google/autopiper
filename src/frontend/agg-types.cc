@@ -163,6 +163,9 @@ InferredType AggTypeResolver::ResolveType(const ASTType* type) {
             if (type->is_chan) {
                 t->is_chan = true;
             }
+            if (type->is_bypass) {
+                t->is_bypass = true;
+            }
             return ResolveType(t.get());
         }
 
@@ -171,6 +174,7 @@ InferredType AggTypeResolver::ResolveType(const ASTType* type) {
         ret.is_chan = type->is_chan;
         ret.array_size = type->array_length;
         ret.is_reg = type->is_reg;
+        ret.is_bypass = type->is_bypass;
 
 #define PRIM(prim_name, width_bits)                                 \
         if (type->ident->name == # prim_name ) {                    \

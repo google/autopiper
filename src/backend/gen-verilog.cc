@@ -275,6 +275,123 @@ void VerilogGenerator::GenerateNode(const IRStmt* stmt) {
             // Nothing
             break;
 
+        case IRStmtBypassStart:
+            // If there's no bypass write in this cycle, write the combined
+            // index + data + valid. Otherwise, do nothing.
+            if (stmt->bypass->writes_by_stage.find(stmt->stage->stage) ==
+                stmt->bypass->writes_by_stage.end()) {
+                out_->SetVar("index_valid", valid_signal);
+                out_->SetVar("index", arg_signals[0]);
+                out_->SetVar("data_width",
+                        strprintf("%d", stmt->bypass->width));
+                // { index valid, index, data valid, data }
+                out_->Print("assign $signal$ = { $index_valid$, "
+                            "$index$, 1'b0, $data_width$'d0 };\n");
+            }
+            break;
+
+        case IRStmtBypassEnd:
+            // Nothing
+            break;
+
+        case IRStmtBypassWrite:
+            // Create a new bypass-bus signal with data, and and data valid
+            // set. Carry index and index valid from BypassStart.
+            out_->SetVar("index_valid",
+                    GetSignalInStage(stmt->bypass->start->valid_in,
+                        stmt->stage->stage));
+            out_->SetVar("index",
+                    GetSignalInStage(stmt->bypass->start->args[0],
+                        stmt->stage->stage));
+            out_->SetVar("data_valid", valid_signal);
+            out_->SetVar("data", arg_signals[0]);
+            out_->Print("assign $signal$ = { $index_valid$, "
+                        "$index$, $data_valid$, $data$ };\n");
+            break;
+
+        case IRStmtBypassPresent:
+        case IRStmtBypassReady:
+        case IRStmtBypassRead: {
+            out_->Print("assign $signal$ =\n    ");
+            bool first = true;
+            for (int stage = stmt->stage->stage + 1; stage <= stmt->bypass->end->stage->stage;
+                 stage++) {
+
+                // If this stage is prior to the bypass network's start, we
+                // have nothing to generate for it, so skip it.
+                if (stage < stmt->bypass->start->stage->stage) {
+                    continue;
+                }
+
+                // Find the "last writer", i.e., the producer of the value of
+                // the bypass bus valid at this stage. The last writer will be
+                // either the entry in writes_by_stage with the largest key
+                // (stage) <= |stage|, or if all keys are > |stage|, then
+                // stmt->bypass->start.
+                IRStmt* last_writer = nullptr;
+                auto it = stmt->bypass->writes_by_stage.upper_bound(stage);
+                // upper_bound() returns the first elem whose key is >
+                // stage, so backing up by one will give the last elem
+                // whose key is <= stage. upper_bound() may return end(), in
+                // which case this will yield begin().
+                if (it != stmt->bypass->writes_by_stage.begin()) {
+                    --it;
+                }
+                if (it == stmt->bypass->writes_by_stage.begin()) {
+                    last_writer = stmt->bypass->start;
+                } else {
+                    last_writer = it->second;
+                }
+
+
+                out_->SetVar("bypass_idx", strprintf("%d", stage));
+                // N.B.: we take the bypass write's value in *its own* stage,
+                // since we are looking across pipeline invocations here.
+                out_->SetVar("bypass_bus",
+                        GetSignalInStage(last_writer, last_writer->stage->stage));
+                int data_width = stmt->bypass->width;
+                int index_width = stmt->bypass->start->args[0]->width;
+                out_->SetVar("data_valid_idx", strprintf("%d", data_width));
+                out_->SetVar("index_valid_idx",
+                        strprintf("%d", data_width + index_width + 1));
+                out_->SetVar("index", arg_signals[0]);
+
+                if (stmt->type == IRStmtBypassPresent) {
+                    if (!first) out_->Print(" | ");
+                    out_->Print(" ($bypass_bus$[$index_valid_idx$] && "
+                                "  ($bypass_bus$[$index_valid_idx$-1:$data_valid_idx$+1] == "
+                                "   $index$))");
+                } else if (stmt->type == IRStmtBypassReady) {
+                    if (!first) out_->Print(" | ");
+                    out_->Print(" ($bypass_bus$[$index_valid_idx$] && "
+                                "  ($bypass_bus$[$index_valid_idx$-1:$data_valid_idx$+1] == "
+                                "   $index$) && "
+                                "  $bypass_bus$[$data_valid_idx$])");
+                } else if (stmt->type == IRStmtBypassRead) {
+                    out_->Print("    "
+                                " ($bypass_bus$[$index_valid_idx$] && "
+                                "  ($bypass_bus$[$index_valid_idx$-1:$data_valid_idx$+1] == "
+                                "   $index$) && "
+                                "  $bypass_bus$[$data_valid_idx$]) ? "
+                                "  $bypass_bus$[$data_valid_idx$-1:0] :\n");
+                } else {
+                    assert(false);
+                }
+                first = false;
+            }
+
+            if (first || stmt->type == IRStmtBypassRead) {
+                // If no bypass writes after this stage, bypass is never
+                // present. Also, always end the ?: (ternary-op) chain of a
+                // bypass read with a 0.
+                out_->Print("0;\n");
+            } else {
+                out_->Print(";\n");
+            }
+
+            break;
+        }
+            
         default:
             printf("Unknown statement in Verilog generator: %s\n", stmt->ToString().c_str());
             assert(false);

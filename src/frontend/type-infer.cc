@@ -183,7 +183,8 @@ void TypeInferPass::EnsureSimple(InferenceNode* n) {
     Location loc = n->loc;
     n->validators_.push_back(
             [loc](InferredType type, ErrorCollector* coll) {
-                if (type.is_port || type.is_chan || type.is_array) {
+                if (type.is_port || type.is_chan || type.is_array ||
+                    type.is_reg || type.is_bypass) {
                     coll->ReportError(loc, ErrorCollector::ERROR,
                             "Type cannot be an array, port, or chan");
                     return false;
@@ -329,8 +330,9 @@ bool TypeInferPass::HandleCast(
 
     InferredType cast_type = aggs_->ResolveType(ty);
     if (cast_type.is_reg || cast_type.is_array ||
-        cast_type.is_port || cast_type.is_chan) {
-        Error(ty, "Invalid cast: cannot cast storage or port/chan types");
+        cast_type.is_port || cast_type.is_chan ||
+        cast_type.is_bypass) {
+        Error(ty, "Invalid cast: cannot cast storage or port/chan or bypass types");
         return false;
     }
 
@@ -350,6 +352,37 @@ bool TypeInferPass::HandleCast(
             });
 
     return true;
+}
+
+void TypeInferPass::ConveyBypass(InferenceNode* n, InferenceNode* value) {
+    value->inputs_.push_back(make_pair(
+                [](const vector<InferredType>& args) {
+                    if (!args[0].is_bypass) {
+                        InferredType conflict;
+                        conflict.type = InferredType::CONFLICT;
+                        conflict.conflict_msg = "Must have bypass value";
+                        return conflict;
+                    } else {
+                        InferredType ret = args[0];
+                        ret.is_bypass = false;
+                        return ret;
+                    }
+                }, vector<InferenceNode*> { n }));
+
+    EnsureSimple(value);
+}
+
+void TypeInferPass::EnsureBypass(InferenceNode* n) {
+    Location loc = n->loc;
+    n->validators_.push_back(
+            [loc](InferredType type, ErrorCollector* coll) {
+                if (!type.is_bypass) {
+                    coll->ReportError(loc, ErrorCollector::ERROR,
+                            "Expected bypass value");
+                    return false;
+                }
+                return true;
+            });
 }
 
 TypeInferPass::Result
@@ -392,9 +425,11 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
         case ASTExpr::XOR:
             // Link input types to output types and vice versa.
             ConveyType(n, arg_types[0]);
-            ConveyType(n, arg_types[1]);
             ConveyType(arg_types[0], n);
-            ConveyType(arg_types[1], n);
+            if (arg_types.size() > 1) {
+                ConveyType(n, arg_types[1]);
+                ConveyType(arg_types[1], n);
+            }
             EnsureSimple(n);
             break;
 
@@ -477,6 +512,21 @@ TypeInferPass::ModifyASTExprPost(ASTRef<ASTExpr>& node) {
             break;
 
         case ASTExpr::PORTDEF:
+            break;
+
+        case ASTExpr::BYPASSDEF:
+            break;
+
+        case ASTExpr::BYPASSPRESENT:
+        case ASTExpr::BYPASSREADY:
+            EnsureBypass(arg_types[0]);
+            EnsureSimple(arg_types[1]);
+            ConveyConstType(n, InferredType(1));
+            break;
+
+        case ASTExpr::BYPASSREAD:
+            EnsureSimple(arg_types[1]);
+            ConveyBypass(arg_types[0], n);
             break;
 
         case ASTExpr::STMTBLOCK: {
@@ -583,6 +633,30 @@ TypeInferPass::Result
 TypeInferPass::ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node) {
     InferenceNode* condition = NodeForAST(node->condition.get());
     ConveyConstType(condition, InferredType(1));
+    return VISIT_CONTINUE;
+}
+
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtBypassStartPost(ASTRef<ASTStmtBypassStart>& node) {
+    InferenceNode* bypass = NodeForAST(node->bypass.get());
+    InferenceNode* index = NodeForAST(node->index.get());
+    EnsureBypass(bypass);
+    EnsureSimple(index);
+    return VISIT_CONTINUE;
+}
+
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtBypassEndPost(ASTRef<ASTStmtBypassEnd>& node) {
+    InferenceNode* bypass = NodeForAST(node->bypass.get());
+    EnsureBypass(bypass);
+    return VISIT_CONTINUE;
+}
+
+TypeInferPass::Result
+TypeInferPass::ModifyASTStmtBypassWritePost(ASTRef<ASTStmtBypassWrite>& node) {
+    InferenceNode* bypass = NodeForAST(node->bypass.get());
+    InferenceNode* value = NodeForAST(node->value.get());
+    ConveyBypass(bypass, value);
     return VISIT_CONTINUE;
 }
 

@@ -106,6 +106,9 @@ VISIT(ASTStmt, {
     T(expr, Expr)
     T(nested, NestedFunc)
     T(onkillyounger, OnKillYounger)
+    T(bypassstart, BypassStart)
+    T(bypassend, BypassEnd)
+    T(bypasswrite, BypassWrite)
 })
 
 #undef T
@@ -208,6 +211,20 @@ VISIT(ASTStmtNestedFunc, {
 
 VISIT(ASTStmtOnKillYounger, {
     CHECK(VisitASTStmtBlock(node->body.get(), context));
+})
+
+VISIT(ASTStmtBypassStart, {
+    CHECK(VisitASTExpr(node->bypass.get(), context));
+    CHECK(VisitASTExpr(node->index.get(), context));
+})
+
+VISIT(ASTStmtBypassEnd, {
+    CHECK(VisitASTExpr(node->bypass.get(), context));
+})
+
+VISIT(ASTStmtBypassWrite, {
+    CHECK(VisitASTExpr(node->bypass.get(), context));
+    CHECK(VisitASTExpr(node->value.get(), context));
 })
 
 VISIT(ASTExpr, {
@@ -325,6 +342,9 @@ MODIFY(ASTStmt, {
     T(expr, Expr)
     T(nested, NestedFunc)
     T(onkillyounger, OnKillYounger)
+    T(bypassstart, BypassStart)
+    T(bypassend, BypassEnd)
+    T(bypasswrite, BypassWrite)
 })
 
 #undef T
@@ -425,6 +445,20 @@ MODIFY(ASTStmtNestedFunc, {
 
 MODIFY(ASTStmtOnKillYounger, {
     FIELD(node->body, ASTStmtBlock);
+})
+
+MODIFY(ASTStmtBypassStart, {
+    FIELD(node->bypass, ASTExpr);
+    FIELD(node->index, ASTExpr);
+})
+
+MODIFY(ASTStmtBypassEnd, {
+    FIELD(node->bypass, ASTExpr);
+})
+
+MODIFY(ASTStmtBypassWrite, {
+    FIELD(node->bypass, ASTExpr);
+    FIELD(node->value, ASTExpr);
 })
 
 MODIFY(ASTExpr, {

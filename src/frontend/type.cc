@@ -75,7 +75,8 @@ InferredType InferredType::Meet(const InferredType& other) const {
             this->is_reg == other.is_reg &&
             this->is_array == other.is_array &&
             (this->array_size == -1 || other.array_size == -1 ||
-             this->array_size == other.array_size)) {
+             this->array_size == other.array_size) &&
+            this->is_bypass == other.is_bypass) {
             InferredType ret = *this;
             // array_size propagates lazily -- -1 on either side can be coerced
             // to the array size on the other side.
@@ -116,6 +117,10 @@ InferredType InferredType::Meet(const InferredType& other) const {
                 conflict.conflict_msg += strprintf(", array_size: %d vs. %d",
                     this->array_size, other.array_size);
             }
+            if (this->is_bypass != other.is_bypass) {
+                conflict.conflict_msg += strprintf(", is_bypass: %d vs. %d",
+                    this->is_bypass, other.is_bypass);
+            }
             return conflict;
         }
     }
@@ -130,6 +135,7 @@ bool InferredType::operator==(const InferredType& other) const {
            is_reg == other.is_reg &&
            is_array == other.is_array &&
            array_size == other.array_size &&
+           is_bypass == other.is_bypass &&
            conflict_msg == other.conflict_msg;
 }
 
@@ -159,6 +165,9 @@ string InferredType::ToString() const {
     }
     if (array_size) {
         os << ",ArraySize=" << array_size;
+    }
+    if (is_bypass) {
+        os << ",Bypass";
     }
     if (type == CONFLICT) {
         os << ",Conflict=" << conflict_msg;

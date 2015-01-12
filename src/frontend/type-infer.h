@@ -98,6 +98,12 @@ class TypeInferPass : public ASTVisitorContext {
         virtual Result ModifyASTStmtWritePost(ASTRef<ASTStmtWrite>& node);
         virtual Result ModifyASTStmtIfPost(ASTRef<ASTStmtIf>& node);
         virtual Result ModifyASTStmtWhilePost(ASTRef<ASTStmtWhile>& node);
+        virtual Result ModifyASTStmtBypassStartPost(
+                ASTRef<ASTStmtBypassStart>& node);
+        virtual Result ModifyASTStmtBypassEndPost(
+                ASTRef<ASTStmtBypassEnd>& node);
+        virtual Result ModifyASTStmtBypassWritePost(
+                ASTRef<ASTStmtBypassWrite>& node);
 
         // Post-AST handler actually runs the type inference.
         virtual Result ModifyASTPost(ASTRef<AST>& node) {
@@ -174,6 +180,12 @@ class TypeInferPass : public ASTVisitorContext {
         bool HandleCast(
                 InferenceNode* n, InferenceNode* arg,
                 const ASTType* ty);
+
+        // Connect a bypass value and its value read or written.
+        void ConveyBypass(InferenceNode* n, InferenceNode* value);
+
+        // Ensure that a value is a bypass value.
+        void EnsureBypass(InferenceNode* n);
 
         // Once the pass has run over the AST to collect all type slots and
         // build the inference graph, this function solves the inference graph

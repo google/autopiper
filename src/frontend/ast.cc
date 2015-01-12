@@ -118,6 +118,9 @@ AST_PRINTER(ASTType) {
     if (node->is_array) {
         out << " ARRAY(length = " << node->array_length << ")";
     }
+    if (node->is_bypass) {
+        out << " BYPASS";
+    }
     out << ")";
 }
 
@@ -154,6 +157,10 @@ AST_PRINTER(ASTStmt) {
     T(stage);
     T(expr);
     T(nested);
+    T(onkillyounger);
+    T(bypassstart);
+    T(bypassend);
+    T(bypasswrite);
 #undef T
     out << I(0) << ")" << endl;
 }
@@ -309,6 +316,37 @@ AST_PRINTER(ASTStmtOnKillYounger) {
     out << I(0) << ")" << endl;
 }
 
+AST_PRINTER(ASTStmtBypassStart) {
+    out << I(0) << "(stmt-bypassstart " << node << endl;
+    out << I(1) << "(bypass ";
+    P(node->bypass.get(), 1);
+    out << endl;
+    out << I(1) << "(index ";
+    P(node->index.get(), 1);
+    out << endl;
+    out << I(0) << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtBypassEnd) {
+    out << I(0) << "(stmt-bypassend " << node << endl;
+    out << I(1) << "(bypass ";
+    P(node->bypass.get(), 1);
+    out << endl;
+    out << I(0) << ")" << endl;
+}
+
+AST_PRINTER(ASTStmtBypassWrite) {
+    out << I(0) << "(stmt-bypasswrite" << node << endl;
+    out << I(1) << "(bypass ";
+    P(node->bypass.get(), 1);
+    out << endl;
+    out << I(1) << "(value ";
+    P(node->value.get(), 1);
+    out << endl;
+    out << I(0) << ")" << endl;
+}
+
+
 AST_PRINTER(ASTExpr) {
     out << I(0) << "(expr " << node << " ";
     switch (node->op) {
@@ -354,6 +392,11 @@ AST_PRINTER(ASTExpr) {
 
         T(PORTREAD);
         T(PORTDEF);
+
+        T(BYPASSDEF);
+        T(BYPASSPRESENT);
+        T(BYPASSREADY);
+        T(BYPASSREAD);
 
         T(STMTBLOCK);
 
@@ -483,6 +526,7 @@ AST_CLONE(ASTType) {
     PRIM(is_reg);
     PRIM(is_array);
     PRIM(array_length);
+    PRIM(is_bypass);
     return ret;
 }
 
@@ -506,6 +550,9 @@ AST_CLONE(ASTStmt) {
     SUB(expr);
     SUB(nested);
     SUB(onkillyounger);
+    SUB(bypassstart);
+    SUB(bypassend);
+    SUB(bypasswrite);
     return ret;
 }
 
@@ -621,6 +668,26 @@ AST_CLONE(ASTStmtNestedFunc) {
 AST_CLONE(ASTStmtOnKillYounger) {
     SETUP(ASTStmtOnKillYounger);
     SUB(body);
+    return ret;
+}
+
+AST_CLONE(ASTStmtBypassStart) {
+    SETUP(ASTStmtBypassStart);
+    SUB(bypass);
+    SUB(index);
+    return ret;
+}
+
+AST_CLONE(ASTStmtBypassEnd) {
+    SETUP(ASTStmtBypassEnd);
+    SUB(bypass);
+    return ret;
+}
+
+AST_CLONE(ASTStmtBypassWrite) {
+    SETUP(ASTStmtBypassWrite);
+    SUB(bypass);
+    SUB(value);
     return ret;
 }
 

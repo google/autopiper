@@ -36,6 +36,7 @@ struct IRStmt;
 struct IRPort;
 struct IRStorage;
 struct IRTimeVar;
+struct IRBypass;
 struct PipeSys;
 struct Pipe;
 struct PipeStage;
@@ -52,6 +53,7 @@ struct IRProgram {
     std::vector<std::unique_ptr<IRPort>> ports;
     std::vector<std::unique_ptr<IRStorage>> storage;
     std::vector<std::unique_ptr<IRTimeVar>> timevars;
+    std::vector<std::unique_ptr<IRBypass>> bypasses;
     std::map<std::string, IRTimeVar*> timevar_map;
 
     // timing model -- "null" by default.
@@ -157,11 +159,6 @@ enum IRStmtType {
     IRStmtArrayWrite,
     IRStmtArraySize,  // declare an array's size (constant field)
 
-    // forwarding: provide and ask
-    IRStmtProvide,
-    IRStmtUnprovide,
-    IRStmtAsk,
-
     // transaction-related: spawn (returning ID), kill own txn, kill younger
     // txns in this pipe.
     IRStmtSpawn,
@@ -170,6 +167,14 @@ enum IRStmtType {
     IRStmtDone,  // txn completes
 
     IRStmtKillIf,  // kill self if a condition (first arg) is met at any downstream point.
+
+    // bypass-network operations:
+    IRStmtBypassStart,  // start a bypass-providing region (first arg is index, portname is bypass network name)
+    IRStmtBypassEnd,    // end a bypass-providing region
+    IRStmtBypassWrite,  // write a value to a bypass network (arg is value)
+    IRStmtBypassPresent, // determine whether a producer is present (returns a boolean) given index (first arg)
+    IRStmtBypassReady,    // determine whether a producer's value is ready (returns a boolean) given index (first arg)
+    IRStmtBypassRead,   // read the youngest value from the bypass network older than this stage
 
     // Constrain timing.
     IRStmtTimingBarrier,
@@ -247,6 +252,7 @@ struct IRStmt {
     IRPort* port;
     IRStorage* storage;
     IRTimeVar* timevar;
+    IRBypass* bypass;
     int time_offset;
     int width;
 
@@ -329,6 +335,22 @@ struct IRStorage {
 
     std::vector<IRStmt*> writers;
     std::vector<IRStmt*> readers;
+};
+
+struct IRBypass {
+    IRBypass() {
+        start = NULL;
+        end = NULL;
+        width = 0;
+    }
+
+    std::string name;
+    IRStmt* start;
+    IRStmt* end;
+    std::vector<IRStmt*> reads;
+    std::vector<IRStmt*> writes;
+    std::map<int, IRStmt*> writes_by_stage;
+    int width;
 };
 
 // Helpers

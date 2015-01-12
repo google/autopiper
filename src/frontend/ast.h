@@ -78,6 +78,9 @@ struct ASTStmtStage;
 struct ASTStmtExpr;
 struct ASTStmtNestedFunc;
 struct ASTStmtOnKillYounger;
+struct ASTStmtBypassStart;
+struct ASTStmtBypassEnd;
+struct ASTStmtBypassWrite;
 
 struct ASTExpr;
 
@@ -155,6 +158,7 @@ struct ASTType : public ASTBase {
     bool is_reg;
     bool is_array;
     int array_length;
+    bool is_bypass;
 
     ASTTypeDef* def;
 
@@ -164,6 +168,7 @@ struct ASTType : public ASTBase {
           is_reg(false),
           is_array(false),
           array_length(-1), 
+          is_bypass(false),
           def(nullptr) {}
 };
 
@@ -186,6 +191,9 @@ struct ASTStmt : public ASTBase {
     ASTRef<ASTStmtExpr> expr;
     ASTRef<ASTStmtNestedFunc> nested;
     ASTRef<ASTStmtOnKillYounger> onkillyounger;
+    ASTRef<ASTStmtBypassStart> bypassstart;
+    ASTRef<ASTStmtBypassEnd> bypassend;
+    ASTRef<ASTStmtBypassWrite> bypasswrite;
 };
 
 struct ASTStmtExpr : public ASTBase {
@@ -272,6 +280,20 @@ struct ASTStmtOnKillYounger : public ASTBase {
     ASTRef<ASTStmtBlock> body;
 };
 
+struct ASTStmtBypassStart: public ASTBase {
+    ASTRef<ASTExpr> bypass;
+    ASTRef<ASTExpr> index;
+};
+
+struct ASTStmtBypassEnd: public ASTBase {
+    ASTRef<ASTExpr> bypass;
+};
+
+struct ASTStmtBypassWrite: public ASTBase {
+    ASTRef<ASTExpr> bypass;
+    ASTRef<ASTExpr> value;
+};
+
 struct ASTExpr : public ASTBase {
     enum Op {
         ADD,
@@ -315,6 +337,11 @@ struct ASTExpr : public ASTBase {
 
         PORTREAD,
         PORTDEF,
+
+        BYPASSDEF,
+        BYPASSPRESENT,
+        BYPASSREADY,
+        BYPASSREAD,
 
         STMTBLOCK,  // must end in an ASTStmtExpr
 
@@ -386,6 +413,9 @@ AST_METHODS(ASTStmtStage);
 AST_METHODS(ASTStmtExpr);
 AST_METHODS(ASTStmtNestedFunc);
 AST_METHODS(ASTStmtOnKillYounger);
+AST_METHODS(ASTStmtBypassStart);
+AST_METHODS(ASTStmtBypassEnd);
+AST_METHODS(ASTStmtBypassWrite);
 AST_METHODS(ASTExpr);
 AST_METHODS(ASTTypeField);
 AST_METHODS(ASTPragma);

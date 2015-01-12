@@ -281,6 +281,12 @@ bool Parser::ParseType(ASTType* ty) {
         if (!Expect(Token::IDENT)) {
             return false;
         }
+    } else if (CurToken().s == "bypass") {
+        ty->is_bypass = true;
+        Consume();
+        if (!Expect(Token::IDENT)) {
+            return false;
+        }
     }
     ty->ident = New<ASTIdent>();
     if (!ParseIdent(ty->ident.get())) {
@@ -332,6 +338,9 @@ bool Parser::ParseStmt(ASTStmt* st) {
     HANDLE_STMT_TYPE("return", return_, Return);
     HANDLE_STMT_TYPE("func", nested, NestedFunc);
     HANDLE_STMT_TYPE("onkillyounger", onkillyounger, OnKillYounger);
+    HANDLE_STMT_TYPE("bypassstart", bypassstart, BypassStart);
+    HANDLE_STMT_TYPE("bypassend", bypassend, BypassEnd);
+    HANDLE_STMT_TYPE("bypasswrite", bypasswrite, BypassWrite);
 
 #undef HANDLE_STMT_TYPE
 
@@ -524,6 +533,44 @@ bool Parser::ParseStmtNestedFunc(ASTStmtNestedFunc* func) {
 bool Parser::ParseStmtOnKillYounger(ASTStmtOnKillYounger* onkillyounger) {
     onkillyounger->body.reset(new ASTStmtBlock());
     return ParseBlock(onkillyounger->body.get());
+}
+
+bool Parser::ParseStmtBypassStart(ASTStmtBypassStart* bypassstart) {
+    bypassstart->bypass = ParseExpr();
+    if (!bypassstart->bypass) {
+        return false;
+    }
+    if (!Consume(Token::COMMA)) {
+        return false;
+    }
+    bypassstart->index = ParseExpr();
+    if (!bypassstart->index) {
+        return false;
+    }
+    return Consume(Token::SEMICOLON);
+}
+
+bool Parser::ParseStmtBypassEnd(ASTStmtBypassEnd* bypassend) {
+    bypassend->bypass = ParseExpr();
+    if (!bypassend->bypass) {
+        return false;
+    }
+    return Consume(Token::SEMICOLON);
+}
+
+bool Parser::ParseStmtBypassWrite(ASTStmtBypassWrite* bypasswrite) {
+    bypasswrite->bypass = ParseExpr();
+    if (!bypasswrite->bypass) {
+        return false;
+    }
+    if (!Consume(Token::COMMA)) {
+        return false;
+    }
+    bypasswrite->value = ParseExpr();
+    if (!bypasswrite->value) {
+        return false;
+    }
+    return Consume(Token::SEMICOLON);
 }
 
 ASTRef<ASTExpr> Parser::ParseExpr() {
@@ -861,6 +908,47 @@ ASTRef<ASTExpr> Parser::ParseExprAtom() {
                 ret->op = ASTExpr::REG_INIT;
                 return ret;
             }
+        }
+
+        if (ident == "bypass") {
+            Consume();
+            ret->op = ASTExpr::BYPASSDEF;
+            return ret;
+        }
+
+        if (ident == "bypasspresent" || ident == "bypassready" ||
+            ident == "bypassread") {
+            Consume();
+            if (!Expect(Token::IDENT)) {
+                return astnull<ASTExpr>();
+            }
+            if (ident == "bypasspresent") {
+                ret->op = ASTExpr::BYPASSPRESENT;
+            } else if (ident == "bypassready") {
+                ret->op = ASTExpr::BYPASSREADY;
+            } else if (ident == "bypassread") {
+                ret->op = ASTExpr::BYPASSREAD;
+            }
+            ASTRef<ASTExpr> var_ref(new ASTExpr());
+            var_ref->op = ASTExpr::VAR;
+            var_ref->ident.reset(new ASTIdent());
+            if (!ParseIdent(var_ref->ident.get())) {
+                return astnull<ASTExpr>();
+            }
+            ret->ops.push_back(move(var_ref));
+
+            if (!Consume(Token::COMMA)) {
+                return astnull<ASTExpr>();
+            }
+
+            ASTRef<ASTExpr> index = ParseExpr();
+            if (!index) {
+                return astnull<ASTExpr>();
+            }
+
+            ret->ops.push_back(move(index));
+
+            return ret;
         }
 
         if (ident == "cast") {

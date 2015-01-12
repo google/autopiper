@@ -68,6 +68,9 @@ class Parser : public ParserBase {
         bool ParseStmtStage(ASTStmtStage* stage);
         bool ParseStmtNestedFunc(ASTStmtNestedFunc* func);
         bool ParseStmtOnKillYounger(ASTStmtOnKillYounger* onkillyounger);
+        bool ParseStmtBypassStart(ASTStmtBypassStart* bypassstart);
+        bool ParseStmtBypassEnd(ASTStmtBypassEnd* bypassend);
+        bool ParseStmtBypassWrite(ASTStmtBypassWrite* bypasswrite);
 
         ASTRef<ASTExpr>  ParseExpr();
         ASTRef<ASTExpr>  ParseExprGroup1();   // group 1:  ternary op  (?:)

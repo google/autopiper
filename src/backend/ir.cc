@@ -190,12 +190,6 @@ string IRStmt::ToString() const {
             os << "arraywrite"; break;
         case IRStmtArraySize:
             os << "arraysize"; break;
-        case IRStmtProvide:
-            os << "provide"; break;
-        case IRStmtUnprovide:
-            os << "unprovide"; break;
-        case IRStmtAsk:
-            os << "ask"; break;
         case IRStmtSpawn:
             os << "spawn"; break;
         case IRStmtKill:
@@ -206,6 +200,18 @@ string IRStmt::ToString() const {
             os << "done"; break;
         case IRStmtKillIf:
             os << "killif"; break;
+        case IRStmtBypassStart:
+            os << "bypassstart"; break;
+        case IRStmtBypassEnd:
+            os << "bypassend"; break;
+        case IRStmtBypassWrite:
+            os << "bypasswrite"; break;
+        case IRStmtBypassPresent:
+            os << "bypasspresent"; break;
+        case IRStmtBypassReady:
+            os << "bypassready"; break;
+        case IRStmtBypassRead:
+            os << "bypassread"; break;
         case IRStmtTimingBarrier:
             os << "timing_barrier"; break;
         case IRStmtBackedge:

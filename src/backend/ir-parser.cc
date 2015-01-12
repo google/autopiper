@@ -152,9 +152,12 @@ bool IdentToStatementType(string ident,
     S("arrayread", IRStmtArrayRead,  StmtArgPortname, StmtArgValnum);
     S("arraywrite", IRStmtArrayWrite,  StmtArgPortname, StmtArgValnum, StmtArgValnum);
 
-    S("provide", IRStmtProvide, StmtArgPortname, StmtArgValnum, StmtArgValnum);
-    S("unprovide", IRStmtUnprovide, StmtArgValnum);  // arg is provide's return value
-    S("ask", IRStmtAsk, StmtArgPortname, StmtArgValnum);
+    S("bypassstart", IRStmtBypassStart, StmtArgPortname, StmtArgValnum);
+    S("bypassend", IRStmtBypassEnd, StmtArgPortname);
+    S("bypasswrite", IRStmtBypassWrite, StmtArgPortname, StmtArgValnum);
+    S("bypasspresent", IRStmtBypassPresent, StmtArgPortname, StmtArgValnum);
+    S("bypassready", IRStmtBypassReady, StmtArgPortname, StmtArgValnum);
+    S("bypassread", IRStmtBypassRead, StmtArgPortname, StmtArgValnum);
 
     S("spawn", IRStmtSpawn,  StmtArgBBname);
     S("kill", IRStmtKill,  StmtArgNone);

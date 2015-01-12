@@ -262,6 +262,12 @@ class CodeGenPass : public ASTVisitorContext {
                 ASTRef<ASTStmtNestedFunc>& node);
         virtual Result ModifyASTStmtOnKillYoungerPre(
                 ASTRef<ASTStmtOnKillYounger>& node);
+        virtual Result ModifyASTStmtBypassStartPost(
+                ASTRef<ASTStmtBypassStart>& node);
+        virtual Result ModifyASTStmtBypassEndPost(
+                ASTRef<ASTStmtBypassEnd>& node);
+        virtual Result ModifyASTStmtBypassWritePost(
+                ASTRef<ASTStmtBypassWrite>& node);
 
         // Expr codegen. Post-hook so that ops are already materialized.
         virtual Result ModifyASTExprPost(ASTRef<ASTExpr>& node);

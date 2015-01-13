@@ -1,0 +1,145 @@
+#test: port id_in 32
+#test: port do_stall 1
+#test: port stage0_id 32
+#test: port stage0_valid 1
+#test: port stage1_id 32
+#test: port stage1_valid 1
+#test: port stage2_id 32
+#test: port stage2_valid 1
+#test: port stage3_id 32
+#test: port stage3_valid 1
+
+#test: cycle 1
+#test: write id_in 1
+#test: write do_stall 0
+
+#test: cycle 2
+#test: write id_in 2
+#test: write do_stall 0
+#test: expect stage0_valid 1
+#test: expect stage0_id 1
+#test: expect stage1_valid 0
+#test: expect stage2_valid 0
+#test: expect stage3_valid 0
+
+#test: cycle 3
+#test: write id_in 3
+#test: write do_stall 0
+#test: expect stage0_valid 1
+#test: expect stage0_id 2
+#test: expect stage1_valid 1
+#test: expect stage1_id 1
+#test: expect stage2_valid 0
+#test: expect stage3_valid 0
+
+#test: cycle 4
+#test: write id_in 4
+#test: write do_stall 1
+#test: expect stage0_valid 1
+#test: expect stage0_id 3
+#test: expect stage1_valid 1
+#test: expect stage1_id 2
+#test: expect stage2_valid 1
+#test: expect stage2_id 1
+#test: expect stage3_valid 0
+
+#test: cycle 5
+#test: write id_in 5
+#test: write do_stall 0
+#test: expect stage0_valid 1
+#test: expect stage0_id 4
+#test: expect stage1_valid 1
+#test: expect stage1_id 3
+#test: expect stage2_valid 1
+#test: expect stage2_id 2
+#test: expect stage3_valid 1
+#test: expect stage3_id 1
+
+#test: cycle 6
+#test: write id_in 6
+#test: write do_stall 0
+#test: expect stage0_valid 1
+#test: expect stage0_id 5
+#test: expect stage1_valid 1
+#test: expect stage1_id 4
+#test: expect stage2_valid 1
+#test: expect stage2_id 3
+#test: expect stage3_valid 1
+#test: expect stage3_id 2
+
+#test: cycle 7
+#test: write id_in 7
+#test: write do_stall 0
+#test: expect stage0_valid 1
+#test: expect stage0_id 5
+#test: expect stage1_valid 1
+#test: expect stage1_id 4
+#test: expect stage2_valid 0
+#test: expect stage3_valid 1
+#test: expect stage3_id 3
+
+#test: cycle 8
+#test: write id_in 8
+#test: write do_stall 0
+#test: expect stage0_valid 1
+#test: expect stage0_id 5
+#test: expect stage1_valid 1
+#test: expect stage1_id 4
+#test: expect stage2_valid 0
+#test: expect stage3_valid 0
+
+#test: cycle 9
+#test: write id_in 9
+#test: write do_stall 0
+#test: expect stage0_valid 1
+#test: expect stage0_id 8
+#test: expect stage1_valid 1
+#test: expect stage1_id 5
+#test: expect stage2_valid 1
+#test: expect stage2_id 4
+#test: expect stage3_valid 0
+
+func entry main() : void {
+    let id_in : port int32 = port "id_in";
+    let do_stall : port bool = port "do_stall";
+
+    let stage0_id    : port int32 = port "stage0_id";
+    let stage0_valid : port int32 = port "stage0_valid" default 0;
+    let stage1_id    : port int32 = port "stage1_id";
+    let stage1_valid : port int32 = port "stage1_valid" default 0;
+    let stage2_id    : port int32 = port "stage2_id";
+    let stage2_valid : port int32 = port "stage2_valid" default 0;
+    let stage3_id    : port int32 = port "stage3_id";
+    let stage3_valid : port int32 = port "stage3_valid" default 0;
+
+    timing {
+        stage 0;
+        let i = read id_in;
+        let s = read do_stall;
+
+        write stage0_id, i;
+        write stage0_valid, 1;
+
+        stage 1;
+
+        write stage1_id, i;
+        write stage1_valid, 1;
+
+        let stall_countdown : int8 = 3;
+        if (s) {
+            while (stall_countdown > 0) {
+                stall_countdown = stall_countdown - 1;
+            }
+        }
+
+        stage 2;
+
+        write stage2_id, i;
+        write stage2_valid, 1;
+
+        stage 3;
+
+        write stage3_id, i;
+        write stage3_valid, 1;
+    }
+}

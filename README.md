@@ -35,16 +35,16 @@ arbitrary-precision numeric library).
 
 On Ubuntu:
 
-$ sudo apt-get install cmake libboost-dev libgmp-dev
+    $ sudo apt-get install cmake libboost-dev libgmp-dev
 
 On Arch Linux:
 
-$ sudo pacman -Syu cmake boost gmp
+    $ sudo pacman -Syu cmake boost gmp
 
 Then create a build directory and compile the application:
 
-$ mkdir build/
-$ cd build/
-$ cmake ..
-$ make
-$ src/autopiper --help
+    $ mkdir build/
+    $ cd build/
+    $ cmake ..
+    $ make
+    $ src/autopiper --help
